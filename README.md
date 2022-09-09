@@ -4,8 +4,12 @@
 
 ## Quick Start
 
+**Remember that you need to install [gitleaks](https://github.com/zricethezav/gitleaks)
+
 ```
 pip3 install -r requirements
+
+# Install gitleaks from https://github.com/zricethezav/gitleaks
 
 python3 leakos.py -h
 usage: leakos.py [-h] [--github-token GITHUB_TOKEN] [--github-orgs GITHUB_ORGS] [--github-users GITHUB_USERS] [--urls-file URLS_FILE]

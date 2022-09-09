@@ -20,6 +20,14 @@ from threading import Semaphore
 ##### GITHUB LEAKS ######
 #########################
 
+def is_tool(name):
+    """Check whether `name` is on PATH and marked as executable."""
+
+    # from whichcraft import which
+    from shutil import which
+
+    return which(name) is not None
+
 def id_generator(size=8, chars=string.ascii_uppercase + string.digits):
     """Generate random string"""
 
@@ -232,6 +240,10 @@ def main():
     debug = args.debug
     generic_leak_in_web = args.generic_leak_in_web
     no_exts = args.not_exts.split(",")
+
+    if not is_tool("gitleaks"):
+        print("gitleaks not found. Please install it in PATH", file=sys.stderr)
+        exit(1)
 
     if not github_orgs and not github_users_str and not urls_file and not stdin_urls:
         print("Nothing to do")
