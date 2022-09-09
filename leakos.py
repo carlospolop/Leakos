@@ -213,7 +213,7 @@ semaph = Semaphore(1)
 ALL_LEAKS = {}
 
 def main():
-    parser = argparse.ArgumentParser(description='Search leaks in a github org or in web files')
+    parser = argparse.ArgumentParser(description='Search leaks in a github org or in the responses of urls')
     parser.add_argument('--github-token', help='Token to access github api (doesn\'t require any permission)')
     parser.add_argument('--github-orgs', help='Github orgs names (comma separated). Users will be searched also in the orgs.')
     parser.add_argument('--github-users', help='Github user names (comma separated)')
