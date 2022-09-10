@@ -30,7 +30,7 @@ optional arguments:
   --github-users GITHUB_USERS
                         Github user names (comma separated)
   --github-users-file GITHUB_USERS_FILE
-                        Github orgs names from file
+                        Github users names from file
   --urls-file URLS_FILE
                         Search leaks in responses from web urls. Path to file containing URLs to search for leaks.
   --stdin-urls STDIN_URLS

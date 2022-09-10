@@ -218,7 +218,7 @@ def main():
     parser.add_argument('--github-orgs', help='Github orgs names (comma separated). Users will be searched also in the orgs.')
     parser.add_argument('--github-orgs-file', help='Github orgs names from file')
     parser.add_argument('--github-users', help='Github user names (comma separated)')
-    parser.add_argument('--github-users-file', help='Github orgs names from file')
+    parser.add_argument('--github-users-file', help='Github users names from file')
     parser.add_argument('--urls-file', help='Search leaks in responses from web urls. Path to file containing URLs to search for leaks.')
     parser.add_argument('--stdin-urls', help='Get URLs from stdin')
     parser.add_argument('--not-exts', help='Do not search for leaks in urls with these extensions (comma separated)', default="7z,tar,zip,avi,mp3,mp4,wav,wmf,wmv,dbf,doc,docm,docx,dot,dotm,dotx,odt,odp,pdf,pps,ppt,ppsm,ppsx,wps,xls,xlsm,xps,ico,eot,fnt,fon,otf,odttf,ttc,ttf,woff,woff2,woff3,bmp,emf,gif,jif,jfi,jfif,jpe,jpeg,jpg,png,psd,svgz,tif,tiff,webp")
@@ -249,7 +249,7 @@ def main():
         print("gitleaks not found. Please install it in PATH", file=sys.stderr)
         exit(1)
 
-    if not github_orgs and not github_users_str and not urls_file and not stdin_urls:
+    if not github_orgs and not github_users_str and not github_orgs_file and not github_users_file and not urls_file and not stdin_urls:
         print("Nothing to do")
         return
     
