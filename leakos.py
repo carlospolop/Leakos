@@ -216,7 +216,9 @@ def main():
     parser = argparse.ArgumentParser(description='Search leaks in a github org or in the responses of urls')
     parser.add_argument('--github-token', help='Token to access github api (doesn\'t require any permission)')
     parser.add_argument('--github-orgs', help='Github orgs names (comma separated). Users will be searched also in the orgs.')
+    parser.add_argument('--github-orgs-file', help='Github orgs names from file')
     parser.add_argument('--github-users', help='Github user names (comma separated)')
+    parser.add_argument('--github-users-file', help='Github orgs names from file')
     parser.add_argument('--urls-file', help='Search leaks in responses from web urls. Path to file containing URLs to search for leaks.')
     parser.add_argument('--stdin-urls', help='Get URLs from stdin')
     parser.add_argument('--not-exts', help='Do not search for leaks in urls with these extensions (comma separated)', default="7z,tar,zip,avi,mp3,mp4,wav,wmf,wmv,dbf,doc,docm,docx,dot,dotm,dotx,odt,odp,pdf,pps,ppt,ppsm,ppsx,wps,xls,xlsm,xps,ico,eot,fnt,fon,otf,odttf,ttc,ttf,woff,woff2,woff3,bmp,emf,gif,jif,jfi,jfif,jpe,jpeg,jpg,png,psd,svgz,tif,tiff,webp")
@@ -230,9 +232,11 @@ def main():
     github_orgs = args.github_orgs
     if github_orgs:
         github_orgs = github_orgs.split(",")
+    github_orgs_file = args.github_orgs_file
     github_users_str = args.github_users
     if github_users_str:
         github_users_str = github_users_str.split(",")
+    github_users_file = args.github_users_file
     urls_file = args.urls_file
     stdin_urls = args.stdin_urls
     out_json_file = args.json_file
@@ -252,6 +256,20 @@ def main():
     if urls_file and not exists(urls_file):
         print(f"File {urls_file} does not exist")
         exit(1)
+    
+    if github_orgs_file:
+        if not exists(github_orgs_file):
+            print(f"File {github_orgs_file} does not exist")
+            exit(1)
+        else:
+            github_orgs = open(github_orgs_file, "r").read().splitlines()
+    
+    if github_users_file:
+        if not exists(github_users_file):
+            print(f"File {github_users_file} does not exist")
+            exit(1)
+        else:
+            github_users_str = open(github_users_file, "r").read().splitlines()
     
     # Look in github
     if github_token:
