@@ -240,7 +240,7 @@ def main():
     urls_file = args.urls_file
     stdin_urls = args.stdin_urls
     out_json_file = args.json_file
-    threads = args.threads
+    threads = int(args.threads)
     debug = args.debug
     generic_leak_in_web = args.generic_leak_in_web
     no_exts = args.not_exts.split(",")
