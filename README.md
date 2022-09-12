@@ -46,7 +46,7 @@ optional arguments:
 
 For the gihub part of this tool you need to **generate a github token** from your account (however this **token doesn't need ANY PERMISSION**).
 
-If you like **Leakos** you will probably like also **[Gorks](https://github.com/carlospolop/Gorks)** and **[Pastos](https://github.com/carlospolop/PastosLICE)** 
+If you like **Leakos** you will probably like also **[Gorks](https://github.com/carlospolop/Gorks)** and **[Pastos](https://github.com/carlospolop/Pastos)** 
 
 
 
