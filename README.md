@@ -1,5 +1,7 @@
 # Leakos
 
+![](leakos.jpeg)
+
 **Search with gitleaks in the responses of the given URLs or in all the repos of an organization and its members.**
 
 ## Quick Start
