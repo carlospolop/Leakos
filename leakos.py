@@ -133,7 +133,7 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
     for line in output.splitlines():
         line_json = json.loads(line)
         if not line_json["Raw"] in already_known:
-            if any(res.lower() in line_json["DetectorName"].lower() for res in avoid_sources):
+            if not line_json["Verified"] and any(res.lower() in line_json["DetectorName"].lower() for res in avoid_sources):
                     print(f"Avoiding {line_json['DetectorName']}")
                     continue
 
@@ -249,7 +249,7 @@ def get_trufflehog_web_leaks(dirpath, url, avoid_sources, from_trufflehog_only_v
     for line in output.splitlines():
         line_json = json.loads(line)
         if not line_json["Raw"] in already_known:
-            if any(res.lower() in line_json["DetectorName"].lower() for res in avoid_sources):
+            if not line_json["Verified"] and any(res.lower() in line_json["DetectorName"].lower() for res in avoid_sources):
                 print(f"Avoiding {line_json['DetectorName']}")
                 continue
 
