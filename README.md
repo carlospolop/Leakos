@@ -1,6 +1,6 @@
 # Leakos
 
-**Search with gitleaks in the responses of the given URLs or in all the repos of an organization and its members.**
+**Search with gitleaks and trufflehog in the responses of the given URLs or in all the repos of an organization and its members.**
 
 ## Quick Start
 
@@ -10,6 +10,7 @@
 pip3 install -r requirements
 
 # Install gitleaks from https://github.com/zricethezav/gitleaks
+# Install trufflehog from https://github.com/trufflesecurity/trufflehog
 
 python3 leakos.py -h
 usage: leakos.py [-h] [--github-token GITHUB_TOKEN] [--github-orgs GITHUB_ORGS] [--github-orgs-file GITHUB_ORGS_FILE]
@@ -42,6 +43,13 @@ optional arguments:
   --debug               Debug
   --generic-leak-in-web
                         Accept generic leaks in web (disabled by defult)
+  --from-trufflehog-only-verified
+                        From trufflehog get only verified leaks
+  --only-verified       Get only verified leaks (only use trufflehog)
+  --avoid-sources AVOID_SOURCES
+                        Lower case comma separated list of sources from trufflehog and gitleaks to avoid
+  --max-secret-length MAX_SECRET_LENGTH
+                        Max length of valid secrets
 ```
 
 For the gihub part of this tool you need to **generate a github token** from your account (however this **token doesn't need ANY PERMISSION**).
