@@ -405,7 +405,7 @@ def main():
     avoid_sources = args.avoid_sources
     if avoid_sources:
         avoid_sources = avoid_sources.split(",")
-    max_secret_length = args.max_secret_length    
+    max_secret_length = int(args.max_secret_length)
     MAX_SECRET_LENGTH = max_secret_length
 
     if not is_tool("gitleaks"):
