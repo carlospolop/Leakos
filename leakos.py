@@ -290,7 +290,7 @@ def get_gitleaks_web_leaks(dirpath, url, avoid_sources, generic_leak_in_web):
     json_name = id_generator()
 
     # Get gitleaks results
-    subprocess.call(["gitleaks", "detect", "-s", f"{dirpath}", "--no-git", "--report-format", "json", "--report-path", f"{tmpdirname}/{json_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'))
+    subprocess.call(["gitleaks", "detect", "-s", f"{dirpath}", "--no-git", "--report-format", "json", "--report-path", f"{dirpath}/{json_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'))
 
     with open(f"{dirpath}/{json_name}.json", "r") as f:
         results = json.load(f)
