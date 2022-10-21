@@ -417,6 +417,8 @@ def main():
     no_exts = args.not_exts.split(",")
     from_trufflehog_only_verified = args.from_trufflehog_only_verified
     only_verified = args.only_verified
+    if only_verified:
+        from_trufflehog_only_verified = True
     avoid_sources = args.avoid_sources
     if avoid_sources:
         avoid_sources = avoid_sources.split(",")
