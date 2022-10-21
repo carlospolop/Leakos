@@ -235,93 +235,106 @@ def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_w
 def get_trufflehog_web_leaks(dirpath, url, avoid_sources, from_trufflehog_only_verified):
     """Use trufflehog to search for leaks in the downloaded we page"""
 
-    already_known = set()
+    global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS
+    try:
+        already_known = set()
 
-    # Get trufflehog results
-    if not from_trufflehog_only_verified:
-        p = subprocess.Popen(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    else:
-        p = subprocess.Popen(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json", "--only-verified"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    output, err = p.communicate()
-    if not output:
-        return
+        # Get trufflehog results
+        if not from_trufflehog_only_verified:
+            p = subprocess.Popen(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        else:
+            p = subprocess.Popen(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json", "--only-verified"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        if not output:
+            return
+        
+        for line in output.splitlines():
+            line_json = json.loads(line)
+            if not line_json["Raw"] in already_known:
+                if not line_json["Verified"] and any(res.lower() in line_json["DetectorName"].lower() for res in avoid_sources):
+                    print(f"Avoiding {line_json['DetectorName']}")
+                    continue
+
+                already_known.add(line_json["Raw"])
+
+                if len(line_json["Raw"]) > MAX_SECRET_LENGTH:
+                    continue
+                
+                print(f"[+] Found by trufflehog: {line_json['Raw']} ({line_json['DetectorName']}) in {url}")
+
+                semaph.acquire()
+                if not line_json["Raw"] in ALL_LEAKS:
+                    ALL_LEAKS[line_json["Raw"]] = {
+                        "name": line_json["Raw"],
+                        "match": "",
+                        "description": line_json["DetectorName"],
+                        "url": url,
+                        "verified": line_json["Verified"],
+                        "tool": "trufflehog"
+                    }
+                elif line_json["Verified"]: #Only overwrite if this is verified
+                    ALL_LEAKS[line_json["Raw"]] = {
+                        "name": line_json["Raw"],
+                        "match": "",
+                        "description": line_json["DetectorName"],
+                        "url": url,
+                        "verified": line_json["Verified"],
+                        "tool": "trufflehog"
+                    }
+                semaph.release()
     
-    for line in output.splitlines():
-        line_json = json.loads(line)
-        if not line_json["Raw"] in already_known:
-            if not line_json["Verified"] and any(res.lower() in line_json["DetectorName"].lower() for res in avoid_sources):
-                print(f"Avoiding {line_json['DetectorName']}")
-                continue
-
-            already_known.add(line_json["Raw"])
-
-            if len(line_json["Raw"]) > MAX_SECRET_LENGTH:
-                continue
-            
-            print(f"[+] Found by trufflehog: {line_json['Raw']} ({line_json['DetectorName']}) in {url}")
-
-            semaph.acquire()
-            if not line_json["Raw"] in ALL_LEAKS:
-                ALL_LEAKS[line_json["Raw"]] = {
-                    "name": line_json["Raw"],
-                    "match": "",
-                    "description": line_json["DetectorName"],
-                    "url": url,
-                    "verified": line_json["Verified"],
-                    "tool": "trufflehog"
-                }
-            elif line_json["Verified"]: #Only overwrite if this is verified
-                ALL_LEAKS[line_json["Raw"]] = {
-                    "name": line_json["Raw"],
-                    "match": "",
-                    "description": line_json["DetectorName"],
-                    "url": url,
-                    "verified": line_json["Verified"],
-                    "tool": "trufflehog"
-                }
-            semaph.release()
+    except Exception as e:
+        if GENERIC_ERRORS < MAX_GENERIC_ERRORS:
+            GENERIC_ERRORS += 1
+            print(e, file=sys.stderr)
 
 
 def get_gitleaks_web_leaks(dirpath, url, avoid_sources, generic_leak_in_web):
     """Use trufflehog to search for leaks in the downloaded we page"""
     
-    global ALL_LEAKS
-    already_known = set()
-    json_name = id_generator()
+    global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS
+    try:
+        already_known = set()
+        json_name = id_generator()
 
-    # Get gitleaks results
-    subprocess.call(["gitleaks", "detect", "-s", f"{dirpath}", "--no-git", "--report-format", "json", "--report-path", f"{dirpath}/{json_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'))
+        # Get gitleaks results
+        subprocess.call(["gitleaks", "detect", "-s", f"{dirpath}", "--no-git", "--report-format", "json", "--report-path", f"{dirpath}/{json_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'))
 
-    with open(f"{dirpath}/{json_name}.json", "r") as f:
-        results = json.load(f)
+        with open(f"{dirpath}/{json_name}.json", "r") as f:
+            results = json.load(f)
+        
+        for result in results:
+            if not result["Secret"] in already_known:
+                if not generic_leak_in_web and "generic" in result['Description'].lower():
+                    continue
+                
+                if any(res.lower() in result['Description'].lower() for res in avoid_sources):
+                    print(f"Avoiding {result['Description']}")
+                    continue
+
+                already_known.add(result["Secret"])
+
+                if len(result["Secret"]) > MAX_SECRET_LENGTH:
+                    continue
+                
+                print(f"[+] Found by gitleaks: {result['Secret']} ({result['Description']}) in {url} with match {result['Match']}")
+                
+                semaph.acquire()
+                if not result["Secret"] in ALL_LEAKS:
+                    ALL_LEAKS[result["Secret"]] = {
+                        "name": result["Secret"],
+                        "match": result["Match"],
+                        "description": result["Description"],
+                        "url": url,
+                        "verified": False,
+                        "tool": "gitleaks"
+                    }
+                semaph.release()
     
-    for result in results:
-        if not result["Secret"] in already_known:
-            if not generic_leak_in_web and "generic" in result['Description'].lower():
-                continue
-            
-            if any(res.lower() in result['Description'].lower() for res in avoid_sources):
-                print(f"Avoiding {result['Description']}")
-                continue
-
-            already_known.add(result["Secret"])
-
-            if len(result["Secret"]) > MAX_SECRET_LENGTH:
-                continue
-            
-            print(f"[+] Found by gitleaks: {result['Secret']} ({result['Description']}) in {url} with match {result['Match']}")
-            
-            semaph.acquire()
-            if not result["Secret"] in ALL_LEAKS:
-                ALL_LEAKS[result["Secret"]] = {
-                    "name": result["Secret"],
-                    "match": result["Match"],
-                    "description": result["Description"],
-                    "url": url,
-                    "verified": False,
-                    "tool": "gitleaks"
-                }
-            semaph.release()
+    except Exception as e:
+        if GENERIC_ERRORS < MAX_GENERIC_ERRORS:
+            GENERIC_ERRORS += 1
+            print(e, file=sys.stderr)
 
 
 def get_web_leaks(url, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified):
@@ -362,6 +375,8 @@ def get_web_leaks(url, avoid_sources, debug, generic_leak_in_web, no_exts, from_
 semaph = Semaphore(1)
 ALL_LEAKS = {}
 MAX_SECRET_LENGTH = 1500
+GENERIC_ERRORS = 0
+MAX_GENERIC_ERRORS = 5
 
 def main():
     global MAX_SECRET_LENGTH
