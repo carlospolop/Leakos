@@ -6,7 +6,7 @@
 
 ## Quick Start
 
-**Remember that you need to install [gitleaks](https://github.com/zricethezav/gitleaks)**
+**Remember that you need to install [gitleaks](https://github.com/zricethezav/gitleaks) and [trufflehog](https://github.com/trufflesecurity/trufflehog)**
 
 ```
 pip3 install -r requirements
