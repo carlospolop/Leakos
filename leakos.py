@@ -422,6 +422,8 @@ def main():
     avoid_sources = args.avoid_sources
     if avoid_sources:
         avoid_sources = avoid_sources.split(",")
+    else:
+        avoid_sources = set()
     max_secret_length = int(args.max_secret_length)
     MAX_SECRET_LENGTH = max_secret_length
 
