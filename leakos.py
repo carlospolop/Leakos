@@ -167,14 +167,16 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
             semaph.release()
     
 
-def check_github(github_token, github_users_str, github_orgs, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified):
+def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified):
     """Check github for leaks"""
 
     github_users = []
-    github_repos = []
 
-    if github_token:
-        git_client = Github(github_token)
+    git_client = Github(github_token)
+    
+    # Get github repos objs
+    if github_repos:
+        github_repos = [git_client.get_repo(repo) for repo in github_repos]
     
     # Get github users objs
     if github_users_str:
@@ -386,6 +388,8 @@ def main():
     parser.add_argument('--github-orgs-file', help='Github orgs names from file')
     parser.add_argument('--github-users', help='Github user names (comma separated)')
     parser.add_argument('--github-users-file', help='Github users names from file')
+    parser.add_argument('--github-repos', help='Github repos (comma separated)')
+    parser.add_argument('--github-repos-file', help='Github repos from file.')
     parser.add_argument('--urls-file', help='Search leaks in responses from web urls. Path to file containing URLs to search for leaks.')
     parser.add_argument('--stdin-urls', help='Get URLs from stdin')
     parser.add_argument('--not-exts', help='Do not search for leaks in urls with these extensions (comma separated)', default="7z,tar,zip,avi,mp3,mp4,wav,wmf,wmv,dbf,doc,docm,docx,dot,dotm,dotx,odt,odp,pdf,pps,ppt,ppsm,ppsx,wps,xls,xlsm,xps,ico,eot,fnt,fon,otf,odttf,ttc,ttf,woff,woff2,woff3,bmp,emf,gif,jif,jfi,jfif,jpe,jpeg,jpg,png,psd,svgz,tif,tiff,webp")
@@ -399,26 +403,42 @@ def main():
     parser.add_argument('--max-secret-length', help='Max length of valid secrets', default=1500)
 
     args = parser.parse_args()
+    
+    # Github
     github_token = args.github_token
+    
     github_orgs = args.github_orgs
     if github_orgs:
         github_orgs = github_orgs.split(",")
     github_orgs_file = args.github_orgs_file
+    
     github_users_str = args.github_users
     if github_users_str:
         github_users_str = github_users_str.split(",")
     github_users_file = args.github_users_file
+    
+    github_repos = args.github_repos
+    if github_repos:
+        github_repos = github_repos.split(",")
+    github_repos_file = args.github_repos_file
+    if not github_repos: github_repos = []
+    
+    # Trufflehog options
+    from_trufflehog_only_verified = args.from_trufflehog_only_verified
+    only_verified = args.only_verified
+    if only_verified:
+        from_trufflehog_only_verified = True
+
+    # URLs
     urls_file = args.urls_file
     stdin_urls = args.stdin_urls
+    
+    # Extra
     out_json_file = args.json_file
     threads = int(args.threads)
     debug = args.debug
     generic_leak_in_web = args.generic_leak_in_web
     no_exts = args.not_exts.split(",")
-    from_trufflehog_only_verified = args.from_trufflehog_only_verified
-    only_verified = args.only_verified
-    if only_verified:
-        from_trufflehog_only_verified = True
     avoid_sources = args.avoid_sources
     if avoid_sources:
         avoid_sources = avoid_sources.split(",")
@@ -435,7 +455,7 @@ def main():
         print("trufflehog not found. Please install it in PATH", file=sys.stderr)
         exit(1)
 
-    if not github_orgs and not github_users_str and not github_orgs_file and not github_users_file and not urls_file and not stdin_urls:
+    if not github_orgs and not github_users_str and not github_orgs_file and not github_users_file and not github_repos and not github_repos_file and not urls_file and not stdin_urls:
         print("Nothing to do")
         return
     
@@ -457,10 +477,20 @@ def main():
         else:
             github_users_str = open(github_users_file, "r").read().splitlines()
     
+    if github_repos_file:
+        if not exists(github_repos_file):
+            print(f"File {github_repos_file} does not exist")
+            exit(1)
+        else:
+            github_repos = open(github_repos_file, "r").read().splitlines()
+    
     # Look in github
     if github_token:
-        if github_orgs or github_users_str:
-            check_github(github_token, github_users_str, github_orgs, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified)
+        if github_repos:
+            github_repos = [r.replace("http://", "").replace("https://", "").replace("github.com/", "") for r in github_repos]
+
+        if github_orgs or github_users_str or github_repos:
+            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified)
         else:
             print("No github orgs or users to check", file=sys.stderr)
             return
