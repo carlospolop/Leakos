@@ -22,7 +22,7 @@ usage: leakos.py [-h] [--github-token GITHUB_TOKEN] [--github-orgs GITHUB_ORGS] 
 
 Search leaks in a github org or in the responses of urls
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --github-token GITHUB_TOKEN
                         Token to access github api (doesn't require any permission)
@@ -34,8 +34,13 @@ optional arguments:
                         Github user names (comma separated)
   --github-users-file GITHUB_USERS_FILE
                         Github users names from file
+  --github-repos GITHUB_REPOS
+                        Github repos (comma separated)
+  --github-repos-file GITHUB_REPOS_FILE
+                        Github repos from file.
   --urls-file URLS_FILE
-                        Search leaks in responses from web urls. Path to file containing URLs to search for leaks.
+                        Search leaks in responses from web urls. Path to file containing URLs to search
+                        for leaks.
   --stdin-urls STDIN_URLS
                         Get URLs from stdin
   --not-exts NOT_EXTS   Do not search for leaks in urls with these extensions (comma separated)
