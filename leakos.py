@@ -461,7 +461,7 @@ def main():
     
     if urls_file and not exists(urls_file):
         print(f"File {urls_file} does not exist")
-        exit(1)
+        urls_file = None # Don't exit but don't use it
     
     if github_orgs_file:
         if not exists(github_orgs_file):
