@@ -34,7 +34,7 @@ def id_generator(size=8, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
 
 
-def get_repos_users_from_org(org_name, git_client):
+def get_repos_users_from_org(org_name, git_client, add_org_repos_forks):
     """Get all repos and users from a github org"""
 
     org = git_client.get_organization(org_name)
@@ -43,16 +43,18 @@ def get_repos_users_from_org(org_name, git_client):
     for member in org.get_members():
         org_users.append(member)
     for repo in org.get_repos():
-        org_repos.append(repo)
+        if not repo.fork or add_org_repos_forks:
+            org_repos.append(repo)
     return org_users, org_repos
 
 
-def get_repos_from_user(github_user):
+def get_repos_from_user(github_user, add_user_repos_forks):
     """Get all repos from a github user"""
 
     user_repos = []
     for repo in github_user.get_repos():
-        user_repos.append(repo)
+        if not repo.fork or add_user_repos_forks:
+            user_repos.append(repo)
     return user_repos
 
 
@@ -167,7 +169,7 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
             semaph.release()
     
 
-def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified):
+def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks):
     """Check github for leaks"""
 
     github_users = []
@@ -191,7 +193,7 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
         for org in github_orgs:
             print(f"Getting users and users repos from org {org}")
             try:
-                org_users, org_repos = get_repos_users_from_org(org, git_client)
+                org_users, org_repos = get_repos_users_from_org(org, git_client, add_org_repos_forks)
                 github_users += org_users
                 github_repos += org_repos
             except Exception as e:
@@ -200,7 +202,7 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
     # Get repos from all users
     if github_users:
         for user in github_users:
-            user_repos = get_repos_from_user(user)
+            user_repos = get_repos_from_user(user, add_user_repos_forks)
             github_repos += user_repos
     
     pool = ThreadPool(processes=threads)
@@ -214,7 +216,7 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
 ####### WEB LEAKS #######
 #########################
 
-def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified):
+def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, max_urls):
     """Check web for leaks"""
 
     # Read file
@@ -228,6 +230,10 @@ def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_w
     else:
         print("No urls or stdin provided", file=sys.stderr)
         return
+    
+    # Limit urls
+    if max_urls:
+        urls = urls[:max_urls]
     
     pool = ThreadPool(processes=threads)
     pool.starmap(get_web_leaks, zip((url for url in urls), repeat(avoid_sources), repeat(debug), repeat(generic_leak_in_web), repeat(no_exts), repeat(from_trufflehog_only_verified), repeat(only_verified)))
@@ -401,6 +407,9 @@ def main():
     parser.add_argument('--only-verified', help='Get only verified leaks (only use trufflehog)', action='store_true', default=False)
     parser.add_argument('--avoid-sources', help='Lower case comma separated list of sources from trufflehog and gitleaks to avoid')
     parser.add_argument('--max-secret-length', help='Max length of valid secrets', default=1500)
+    parser.add_argument('--add-org-repos-forks', help="Check an org repo even if it's a fork", action='store_true', default=False)
+    parser.add_argument('--add-user-repos-forks', help="Check an user repo even if it's a fork", action='store_true', default=False)
+    parser.add_argument('--max-urls', help="Maximun number of URLs to check", type=int, default=10000)
 
     args = parser.parse_args()
     
@@ -422,6 +431,9 @@ def main():
         github_repos = github_repos.split(",")
     github_repos_file = args.github_repos_file
     if not github_repos: github_repos = []
+
+    add_org_repos_forks = args.add_org_repos_forks
+    add_user_repos_forks = args.add_user_repos_forks
     
     # Trufflehog options
     from_trufflehog_only_verified = args.from_trufflehog_only_verified
@@ -432,6 +444,7 @@ def main():
     # URLs
     urls_file = args.urls_file
     stdin_urls = args.stdin_urls
+    max_urls = args.max_urls
     
     # Extra
     out_json_file = args.json_file
@@ -490,14 +503,14 @@ def main():
             github_repos = [r.replace("http://", "").replace("https://", "").replace("github.com/", "") for r in github_repos]
 
         if github_orgs or github_users_str or github_repos:
-            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified)
+            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks)
         else:
             print("No github orgs or users to check", file=sys.stderr)
             return
     
     # Look in web files
     if urls_file or stdin_urls:
-        check_web(urls_file, stdin_urls, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified)
+        check_web(urls_file, stdin_urls, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, max_urls)
     
 
     if out_json_file:
