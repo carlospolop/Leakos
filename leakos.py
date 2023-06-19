@@ -7,6 +7,7 @@ import string
 import subprocess
 import sys
 import tempfile
+import time
 
 from github import Github
 from itertools import repeat
@@ -65,11 +66,17 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
 
     if debug:
         print(f"Gitleaks checking for leaks in {github_repo.full_name}")
+        start_time = time.time()
     
     folder_name = id_generator()
     subprocess.call(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'))
     subprocess.call(["gitleaks", "detect", "-s", f"/tmp/{folder_name}", "--report-format", "json", "--report-path", f"/tmp/{folder_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'))
     subprocess.call(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'))
+
+    if debug:
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"Gitleaks checked {github_repo.full_name} in {execution_time}s")
 
     try:
         with open(f"/tmp/{folder_name}.json", "r") as f:
@@ -98,16 +105,18 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
                 print(f"[+] Found: {result['Secret']} ({result['Description']}) in {url} with match {result['Match']}")
                 
                 semaph.acquire()
-                if not result["Secret"] in ALL_LEAKS:
-                    ALL_LEAKS[result["Secret"]] = {
-                        "name": result["Secret"],
-                        "match": result["Match"],
-                        "description": result["Description"],
-                        "url": url,
-                        "verified": False,
-                        "tool": "gitleaks"
-                    }
-                semaph.release()
+                try:
+                    if not result["Secret"] in ALL_LEAKS:
+                        ALL_LEAKS[result["Secret"]] = {
+                            "name": result["Secret"],
+                            "match": result["Match"],
+                            "description": result["Description"],
+                            "url": url,
+                            "verified": False,
+                            "tool": "gitleaks"
+                        }
+                finally:
+                    semaph.release()
     
     except Exception as e:
         print(e, file=sys.stderr)
@@ -119,6 +128,7 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
 
     if debug:
         print(f"Trufflehog checking for leaks in {github_repo.full_name}")
+        start_time = time.time()
     
     already_known = set()
 
@@ -131,6 +141,11 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
     output, err = p.communicate()
     if not output:
         return
+    
+    if debug:
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"Trufflehog checked {github_repo.full_name} in {execution_time}s")
     
     for line in output.splitlines():
         line_json = json.loads(line)
@@ -148,25 +163,27 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
             print(f"[+] Found by trufflehog: {line_json['Raw']} ({line_json['DetectorName']}) in {url}")
 
             semaph.acquire()
-            if not line_json["Raw"] in ALL_LEAKS:
-                ALL_LEAKS[line_json["Raw"]] = {
-                    "name": line_json["Raw"],
-                    "match": "",
-                    "description": line_json["DetectorName"],
-                    "url": url,
-                    "verified": line_json["Verified"],
-                    "tool": "trufflehog"
-                }
-            elif line_json["Verified"]: #Only overwrite if this is verified
-                ALL_LEAKS[line_json["Raw"]] = {
-                    "name": line_json["Raw"],
-                    "match": "",
-                    "description": line_json["DetectorName"],
-                    "url": f"{repo_url}/commit/{repo_url['Github']['Commit']}",
-                    "verified": line_json["Verified"],
-                    "tool": "trufflehog"
-                }
-            semaph.release()
+            try:
+                if not line_json["Raw"] in ALL_LEAKS:
+                    ALL_LEAKS[line_json["Raw"]] = {
+                        "name": line_json["Raw"],
+                        "match": "",
+                        "description": line_json["DetectorName"],
+                        "url": url,
+                        "verified": line_json["Verified"],
+                        "tool": "trufflehog"
+                    }
+                elif line_json["Verified"]: #Only overwrite if this is verified
+                    ALL_LEAKS[line_json["Raw"]] = {
+                        "name": line_json["Raw"],
+                        "match": "",
+                        "description": line_json["DetectorName"],
+                        "url": f"{repo_url}/commit/{repo_url['Github']['Commit']}",
+                        "verified": line_json["Verified"],
+                        "tool": "trufflehog"
+                    }
+            finally:
+                semaph.release()
     
 
 def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks):
