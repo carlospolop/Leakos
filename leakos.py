@@ -137,7 +137,7 @@ def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, avoid_sources,
         start_time = time.time()
     
     try:
-        p = subprocess.run(["Rex", "-g", f'https://github.com/{github_repo.full_name}', "-r", rex_regex_path, "-t", github_token, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=180)
+        p = subprocess.run(["Rex", "-g", f'https://github.com/{github_repo.full_name}', "-r", rex_regex_path, "-t", github_token, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=250)
         results = p.stdout.decode('utf-8')
     except Exception as e:
         print(f"repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
