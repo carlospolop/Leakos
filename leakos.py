@@ -268,7 +268,12 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
     
     # Get github repos objs
     if github_repos:
-        github_repos = [git_client.get_repo(repo) for repo in github_repos]
+        github_repos = []
+        for repo in github_repos:
+            try:
+                github_repos.append(git_client.get_repo(repo))
+            except Exception as e:
+                print(f"Contiuing without checking repo {repo}: {e}", file=sys.stderr)
     
     # Get github users objs
     if github_users_str:
