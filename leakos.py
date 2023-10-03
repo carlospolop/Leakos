@@ -17,7 +17,6 @@ from os.path import exists
 from threading import Semaphore
 
 
-
 #########################
 ##### GITHUB LEAKS ######
 #########################
@@ -63,7 +62,7 @@ def get_repos_from_user(github_user, add_user_repos_forks):
 def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
     """Download github repo and search for leaks"""
 
-    global ALL_LEAKS
+    global ALL_LEAKS, TIMEOUT
 
     if debug:
         print(f"Gitleaks checking for leaks in {github_repo.full_name}")
@@ -71,9 +70,9 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
     
     folder_name = id_generator()
     try:
-        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=180)
-        subprocess.run(["gitleaks", "detect", "-s", f"/tmp/{folder_name}", "--report-format", "json", "--report-path", f"/tmp/{folder_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=180)
-        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=180)
+        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        subprocess.run(["gitleaks", "detect", "-s", f"/tmp/{folder_name}", "--report-format", "json", "--report-path", f"/tmp/{folder_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
     except Exception as e:
         print(f"repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
         return
@@ -87,7 +86,7 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
         with open(f"/tmp/{folder_name}.json", "r") as f:
             results = json.load(f)
         
-        subprocess.call(["rm", "-rf", f"/tmp/{folder_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=180)
+        subprocess.call(["rm", "-rf", f"/tmp/{folder_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
         
         already_known = set()
         for result in results:
@@ -130,7 +129,7 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
 def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, avoid_sources, debug):
     """Download github repo and search for leaks"""
 
-    global ALL_LEAKS
+    global ALL_LEAKS, TIMEOUT
 
     if debug:
         print(f"Rex checking for leaks in {github_repo.full_name}")
@@ -190,7 +189,7 @@ def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, avoid_sources,
 
 def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, from_trufflehog_only_verified):
 
-    global ALL_LEAKS
+    global ALL_LEAKS, TIMEOUT
 
     if debug:
         print(f"Trufflehog checking for leaks in {github_repo.full_name}")
@@ -203,9 +202,9 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
     
     try:
         if not from_trufflehog_only_verified:
-            result = subprocess.run(["trufflehog", "github", "--repo", repo_url, "--json", "--token", github_token, "--no-update"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+            result = subprocess.run(["trufflehog", "github", "--repo", repo_url, "--json", "--token", github_token, "--no-update"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT)
         else:
-            result = subprocess.run(["trufflehog", "github", "--repo", repo_url, "--json", "--token", github_token, "--no-update", "--only-verified"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+            result = subprocess.run(["trufflehog", "github", "--repo", repo_url, "--json", "--token", github_token, "--no-update", "--only-verified"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT)
         output = result.stdout.decode('utf-8')
         err = result.stderr.decode('utf-8')
     except Exception as e:
@@ -346,16 +345,16 @@ def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_w
 def get_trufflehog_web_leaks(dirpath, url, avoid_sources, from_trufflehog_only_verified):
     """Use trufflehog to search for leaks in the downloaded we page"""
 
-    global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS
+    global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS, TIMEOUT
     try:
         already_known = set()
 
         # Get trufflehog results
         try:
             if not from_trufflehog_only_verified:
-                result = subprocess.run(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+                result = subprocess.run(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT)
             else:
-                result = subprocess.run(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json", "--only-verified"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+                result = subprocess.run(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json", "--only-verified"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             print(f"repo: {dirpath} , error: {e}", file=sys.stderr)
             return
@@ -410,14 +409,14 @@ def get_trufflehog_web_leaks(dirpath, url, avoid_sources, from_trufflehog_only_v
 def get_gitleaks_web_leaks(dirpath, url, avoid_sources, generic_leak_in_web):
     """Use gitleaks to search for leaks in the downloaded web page"""
     
-    global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS
+    global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS, TIMEOUT
     try:
         already_known = set()
         json_name = id_generator()
 
         # Get gitleaks results
         try:
-            subprocess.run(["gitleaks", "detect", "-s", f"{dirpath}", "--no-git", "--report-format", "json", "--report-path", f"{dirpath}/{json_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=120)
+            subprocess.run(["gitleaks", "detect", "-s", f"{dirpath}", "--no-git", "--report-format", "json", "--report-path", f"{dirpath}/{json_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             print(f"Timeout for {url}", file=sys.stderr)
             return
@@ -462,13 +461,13 @@ def get_gitleaks_web_leaks(dirpath, url, avoid_sources, generic_leak_in_web):
 def get_rex_web_leaks(dirpath, url, avoid_sources, rex_regex_path):
     """Use Rex to search for leaks in the downloaded web page"""
     
-    global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS
+    global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS, TIMEOUT
     try:
         already_known = set()
 
         # Get gitleaks results
         try:
-            p = subprocess.run(["Rex", "-d", f"{dirpath}", "-r", rex_regex_path, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=120)
+            p = subprocess.run(["Rex", "-d", f"{dirpath}", "-r", rex_regex_path, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
             results = p.stdout.decode('utf-8')
         except subprocess.TimeoutExpired:
             print(f"Timeout for {url}", file=sys.stderr)
@@ -551,6 +550,7 @@ ALL_LEAKS = {}
 MAX_SECRET_LENGTH = 1500
 GENERIC_ERRORS = 0
 MAX_GENERIC_ERRORS = 5
+TIMEOUT = 300
 
 def main():
     global MAX_SECRET_LENGTH
@@ -580,7 +580,7 @@ def main():
     parser.add_argument('--not-trufflehog', help="Don't use trufflehog", action='store_true', default=False)
     parser.add_argument('--not-rex', help="Don't use Rex", action='store_true', default=False)
     parser.add_argument('--rex-regex-path', help="Path to regex file for Rex (auto download if nothign specified)")
-
+    parser.add_argument('--tools-timeout', default=300, help="Timeout in seconds whe launching the tools")
 
     args = parser.parse_args()
 
@@ -665,6 +665,8 @@ def main():
         avoid_sources = set()
     max_secret_length = int(args.max_secret_length)
     MAX_SECRET_LENGTH = max_secret_length
+    TIMEOUT = int(args.tools_timeout)
+
 
     if not is_tool("gitleaks") and not not_gitleaks:
         print("gitleaks not found (https://github.com/gitleaks/gitleaks). Please install it in PATH", file=sys.stderr)
