@@ -126,7 +126,7 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
         print(e, file=sys.stderr)
 
 
-def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, avoid_sources, debug):
+def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, rex_all_regexes, avoid_sources, debug):
     """Download github repo and search for leaks"""
 
     global ALL_LEAKS, TIMEOUT
@@ -136,7 +136,10 @@ def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, avoid_sources,
         start_time = time.time()
     
     try:
-        p = subprocess.run(["Rex", "-g", f'https://github.com/{github_repo.full_name}', "-r", rex_regex_path, "-t", github_token, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=300)
+        if rex_all_regexes:
+            p = subprocess.run(["Rex", "-g", f'https://github.com/{github_repo.full_name}', "-r", rex_regex_path, "-t", github_token], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=300)
+        else:
+            p = subprocess.run(["Rex", "-g", f'https://github.com/{github_repo.full_name}', "-r", rex_regex_path, "-t", github_token, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=300)
         results = p.stdout.decode('utf-8')
     except Exception as e:
         print(f"repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
@@ -258,7 +261,7 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
                 semaph.release()
     
 
-def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path):
+def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes):
     """Check github for leaks"""
 
     github_users = []
@@ -309,7 +312,7 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
         pool.starmap(get_gitleaks_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug)))
     
     if not only_verified and not not_rex:
-        pool.starmap(get_rex_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(rex_regex_path), repeat(avoid_sources), repeat(debug)))
+        pool.starmap(get_rex_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(rex_regex_path), repeat(rex_all_regexes), repeat(avoid_sources), repeat(debug)))
 
     pool.close()
 
@@ -318,7 +321,7 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
 ####### WEB LEAKS #######
 #########################
 
-def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, max_urls, not_gitleaks, not_trufflehog, not_rex, rex_regex_path):
+def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, max_urls, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes):
     """Check web for leaks"""
 
     # Read file
@@ -338,7 +341,7 @@ def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_w
         urls = urls[:max_urls]
     
     pool = ThreadPool(processes=threads)
-    pool.starmap(get_web_leaks, zip((url for url in urls), repeat(avoid_sources), repeat(debug), repeat(generic_leak_in_web), repeat(no_exts), repeat(from_trufflehog_only_verified), repeat(only_verified), repeat(not_gitleaks), repeat(not_trufflehog), repeat(not_rex), repeat(rex_regex_path)))
+    pool.starmap(get_web_leaks, zip((url for url in urls), repeat(avoid_sources), repeat(debug), repeat(generic_leak_in_web), repeat(no_exts), repeat(from_trufflehog_only_verified), repeat(only_verified), repeat(not_gitleaks), repeat(not_trufflehog), repeat(not_rex), repeat(rex_regex_path), repeat(rex_all_regexes)))
     pool.close()
 
 
@@ -458,7 +461,7 @@ def get_gitleaks_web_leaks(dirpath, url, avoid_sources, generic_leak_in_web):
             print(e, file=sys.stderr)
 
 
-def get_rex_web_leaks(dirpath, url, avoid_sources, rex_regex_path):
+def get_rex_web_leaks(dirpath, url, avoid_sources, rex_regex_path, rex_all_regexes):
     """Use Rex to search for leaks in the downloaded web page"""
     
     global ALL_LEAKS, GENERIC_ERRORS, MAX_GENERIC_ERRORS, TIMEOUT
@@ -467,7 +470,10 @@ def get_rex_web_leaks(dirpath, url, avoid_sources, rex_regex_path):
 
         # Get gitleaks results
         try:
-            p = subprocess.run(["Rex", "-d", f"{dirpath}", "-r", rex_regex_path, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+            if rex_all_regexes:
+                p = subprocess.run(["Rex", "-d", f"{dirpath}", "-r", rex_regex_path], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+            else:
+                p = subprocess.run(["Rex", "-d", f"{dirpath}", "-r", rex_regex_path, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
             results = p.stdout.decode('utf-8')
         except subprocess.TimeoutExpired:
             print(f"Timeout for {url}", file=sys.stderr)
@@ -505,7 +511,7 @@ def get_rex_web_leaks(dirpath, url, avoid_sources, rex_regex_path):
             print(e, file=sys.stderr)
 
 
-def get_web_leaks(url, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, not_gitleaks, not_trufflehog, not_rex, rex_regex_path):
+def get_web_leaks(url, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes):
     """Check url for leaks"""
 
     global ALL_LEAKS
@@ -535,7 +541,7 @@ def get_web_leaks(url, avoid_sources, debug, generic_leak_in_web, no_exts, from_
             get_gitleaks_web_leaks(tmpdirname, url, avoid_sources, generic_leak_in_web)
         
         if not only_verified and not not_rex:
-            get_rex_web_leaks(tmpdirname, url, avoid_sources, rex_regex_path)
+            get_rex_web_leaks(tmpdirname, url, avoid_sources, rex_regex_path, rex_all_regexes)
 
 
 
@@ -581,6 +587,7 @@ def main():
     parser.add_argument('--not-rex', help="Don't use Rex", action='store_true', default=False)
     parser.add_argument('--rex-regex-path', help="Path to regex file for Rex (auto download if nothign specified)")
     parser.add_argument('--tools-timeout', default=300, help="Timeout in seconds whe launching the tools")
+    parser.add_argument('--rex-all-regexes', help="Allow Rex to use all the regexes (more noise, but more potential findings)", action='store_true', default=False)
 
     args = parser.parse_args()
 
@@ -626,6 +633,7 @@ def main():
         exit(1)
     
     # Rex
+    rex_all_regexes = args.rex_all_regexes
     rex_regex_path = args.rex_regex_path
     if not rex_regex_path or not os.path.exists(rex_regex_path):
         print(f"Rex regex path '{rex_regex_path}' does not exist. Trying to download from the default location...", file=sys.stderr)
@@ -710,19 +718,23 @@ def main():
             github_repos = open(github_repos_file, "r").read().splitlines()
     
     # Look in github
+    if not github_token and (github_orgs or github_users_str or github_repos):
+        print("To check Github repos you need to provide a github token `--github-token` even if they are public repos (create a GH token with only public access)", file=sys.stderr)
+        return
+    
     if github_token:
         if github_repos:
             github_repos = [r.replace("http://", "").replace("https://", "").replace("github.com/", "") for r in github_repos]
 
         if github_orgs or github_users_str or github_repos:
-            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path)
+            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes)
         else:
             print("No github orgs or users to check", file=sys.stderr)
             return
     
     # Look in web files
     if urls_file or stdin_urls:
-        check_web(urls_file, stdin_urls, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, max_urls, not_gitleaks, not_trufflehog, not_rex, rex_regex_path)
+        check_web(urls_file, stdin_urls, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, max_urls, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes)
     
 
     if out_json_file:
