@@ -80,7 +80,7 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
         subprocess.run(["gitleaks", "detect", "-s", f"/tmp/{folder_name}", "--report-format", "json", "--report-path", f"/tmp/{folder_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
         subprocess.run(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
     except Exception as e:
-        print(f"repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
+        print(f"Gitleaks repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
         return
 
     if debug:
@@ -148,7 +148,7 @@ def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, rex_all_regexe
             p = subprocess.run(["Rex", "-g", f'https://github.com/{github_repo.full_name}', "-r", rex_regex_path, "-t", github_token, "-c"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=300)
         results = p.stdout.decode('utf-8')
     except Exception as e:
-        print(f"repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
+        print(f"Rex repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
         return
 
     if debug:
@@ -217,16 +217,18 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
         output = result.stdout.decode('utf-8')
         err = result.stderr.decode('utf-8')
     except Exception as e:
-        print(f"repo: {repo_url} , error: {e}", file=sys.stderr)
+        print(f"Trufflehog repo: {repo_url} , error: {e}", file=sys.stderr)
         return
 
-    if not output:
-        return
-    
     if debug:
         end_time = time.time()
         execution_time = end_time - start_time
         print(f"Trufflehog checked {github_repo.full_name} in {execution_time}s")
+
+    if not output:
+        return
+    
+    
     
     for line in output.splitlines():
         line_json = json.loads(line)
