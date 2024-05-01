@@ -35,17 +35,23 @@ def id_generator(size=8, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
 
 
-def get_repos_users_from_org(org_name, git_client, add_org_repos_forks):
+def get_repos_users_from_org(org_name, git_client, add_org_repos_forks, debug):
     """Get all repos and users from a github org"""
 
     org = git_client.get_organization(org_name)
     org_users = []
     org_repos = []
     for member in org.get_members():
+        if debug:
+            print("[+] Member: " + str(member))
         org_users.append(member)
     for repo in org.get_repos():
         if not repo.fork or add_org_repos_forks:
+            if debug:
+                print("[+] Repo: " + str(repo.full_name))
             org_repos.append(repo)
+    
+    print("bye")
     return org_users, org_repos
 
 
@@ -249,14 +255,17 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
                         "tool": "trufflehog"
                     }
                 elif line_json["Verified"]: #Only overwrite if this is verified
-                    ALL_LEAKS[line_json["Raw"]] = {
-                        "name": line_json["Raw"],
-                        "match": "",
-                        "description": line_json["DetectorName"],
-                        "url": f"{repo_url}/commit/{repo_url['Github']['Commit']}",
-                        "verified": line_json["Verified"],
-                        "tool": "trufflehog"
-                    }
+                    try:
+                        ALL_LEAKS[line_json["Raw"]] = {
+                            "name": line_json["Raw"],
+                            "match": "",
+                            "description": line_json["DetectorName"],
+                            "url": f"{repo_url}/commit/{repo_url['Github']['Commit']}",
+                            "verified": line_json["Verified"],
+                            "tool": "trufflehog"
+                        }
+                    except:
+                        pass
             finally:
                 semaph.release()
     
@@ -291,7 +300,7 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
         for org in github_orgs:
             print(f"Getting users and users repos from org {org}")
             try:
-                org_users, org_repos = get_repos_users_from_org(org, git_client, add_org_repos_forks)
+                org_users, org_repos = get_repos_users_from_org(org, git_client, add_org_repos_forks, debug)
                 github_users += org_users
                 github_repos += org_repos
             except Exception as e:
