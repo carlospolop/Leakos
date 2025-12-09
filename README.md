@@ -105,6 +105,12 @@ python3 leakos.py --avoid-sources "generic,test" --github-token TOKEN --github-r
 # Increase threads for faster scanning
 python3 leakos.py --threads 20 --github-token TOKEN --github-orgs myorg
 
+# Limit repos from an org or user (useful for large orgs)
+python3 leakos.py --github-token TOKEN --github-orgs bigorg --max-repos 20
+
+# Stop after 10 minutes and return results found so far
+python3 leakos.py --github-token TOKEN --github-orgs bigorg --max-timeout 600
+
 # Debug mode
 python3 leakos.py --debug --github-token TOKEN --github-repos myrepo
 ```
@@ -176,6 +182,8 @@ Generate a token at: https://github.com/settings/tokens
 - `--stdin-urls` - Read URLs from stdin
 - `--not-exts` - Comma-separated extensions to skip (default: archives, images, etc.)
 - `--max-urls` - Maximum number of URLs to scan
+- `--max-repos` - Maximum number of repos to check from orgs/users (default: 50)
+- `--max-timeout` - Maximum total execution time in seconds (0 for unlimited, default: 0)
 
 ### Tool Selection
 - `--not-gitleaks` - Disable gitleaks

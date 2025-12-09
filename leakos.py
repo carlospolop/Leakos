@@ -514,7 +514,12 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
 def scan_repo_with_all_tools(github_repo, github_token, avoid_sources, debug, from_trufflehog_only_verified, only_verified, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher):
     """Clone repo once and scan with all enabled tools in parallel"""
     
-    global TIMEOUT
+    global TIMEOUT, MAX_TIMEOUT, START_TIME
+    
+    # Check if we've exceeded max timeout before starting
+    if MAX_TIMEOUT > 0 and (time.time() - START_TIME) >= MAX_TIMEOUT:
+        print(f"[!] Maximum timeout of {MAX_TIMEOUT}s reached. Skipping repo {github_repo.full_name}", file=sys.stderr)
+        return
     
     # Clone repo once for all tools that need it
     folder_name = id_generator()
@@ -565,7 +570,7 @@ def scan_repo_with_all_tools(github_repo, github_token, avoid_sources, debug, fr
         print(f"Failed to cleanup {repo_path}: {e}", file=sys.stderr)
     
 
-def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher):
+def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, max_repos, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher):
     """Check github for leaks"""
 
     github_users = []
@@ -611,24 +616,39 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
             user_repos = get_repos_from_user(user, add_user_repos_forks)
             github_repos += user_repos
     
+    # Limit number of repos if specified
+    original_count = len(github_repos)
+    if max_repos and len(github_repos) > max_repos:
+        github_repos = github_repos[:max_repos]
+        print(f"Limiting to {max_repos} repos out of {original_count} total repos found")
+    
     # NEW: Scan each repo with all tools in parallel
     pool = ThreadPool(processes=threads)
-    pool.starmap(scan_repo_with_all_tools, zip(
-        (repo for repo in github_repos),
-        repeat(github_token),
-        repeat(avoid_sources),
-        repeat(debug),
-        repeat(from_trufflehog_only_verified),
-        repeat(only_verified),
-        repeat(not_gitleaks),
-        repeat(not_trufflehog),
-        repeat(not_rex),
-        repeat(rex_regex_path),
-        repeat(rex_all_regexes),
-        repeat(not_noseyparker),
-        repeat(not_ggshield),
-        repeat(not_kingfisher)
-    ))
+    
+    # Process repos one by one, checking timeout between each
+    for repo in github_repos:
+        # Check if we've exceeded max timeout
+        if MAX_TIMEOUT > 0 and (time.time() - START_TIME) >= MAX_TIMEOUT:
+            print(f"[!] Maximum timeout of {MAX_TIMEOUT}s reached after scanning some repos. Stopping and returning results.", file=sys.stderr)
+            break
+        
+        # Scan this repo
+        pool.apply(scan_repo_with_all_tools, args=(
+            repo,
+            github_token,
+            avoid_sources,
+            debug,
+            from_trufflehog_only_verified,
+            only_verified,
+            not_gitleaks,
+            not_trufflehog,
+            not_rex,
+            rex_regex_path,
+            rex_all_regexes,
+            not_noseyparker,
+            not_ggshield,
+            not_kingfisher
+        ))
 
     pool.close()
 
@@ -658,7 +678,30 @@ def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_w
         urls = urls[:max_urls]
     
     pool = ThreadPool(processes=threads)
-    pool.starmap(get_web_leaks, zip((url for url in urls), repeat(avoid_sources), repeat(debug), repeat(generic_leak_in_web), repeat(no_exts), repeat(from_trufflehog_only_verified), repeat(only_verified), repeat(not_gitleaks), repeat(not_trufflehog), repeat(not_rex), repeat(rex_regex_path), repeat(rex_all_regexes)))
+    
+    # Process URLs one by one, checking timeout between each
+    for url in urls:
+        # Check if we've exceeded max timeout
+        if MAX_TIMEOUT > 0 and (time.time() - START_TIME) >= MAX_TIMEOUT:
+            print(f"[!] Maximum timeout of {MAX_TIMEOUT}s reached after scanning some URLs. Stopping and returning results.", file=sys.stderr)
+            break
+        
+        # Scan this URL
+        pool.apply(get_web_leaks, args=(
+            url,
+            avoid_sources,
+            debug,
+            generic_leak_in_web,
+            no_exts,
+            from_trufflehog_only_verified,
+            only_verified,
+            not_gitleaks,
+            not_trufflehog,
+            not_rex,
+            rex_regex_path,
+            rex_all_regexes
+        ))
+    
     pool.close()
 
 
@@ -874,9 +917,12 @@ MAX_SECRET_LENGTH = 1500
 GENERIC_ERRORS = 0
 MAX_GENERIC_ERRORS = 5
 TIMEOUT = 300
+MAX_TIMEOUT = 0
+START_TIME = 0
 
 def main():
-    global MAX_SECRET_LENGTH
+    global MAX_SECRET_LENGTH, MAX_TIMEOUT, START_TIME
+    START_TIME = time.time()
     parser = argparse.ArgumentParser(description='Search leaks in a github org or in the responses of urls')
     parser.add_argument('--github-token', help='Token to access github api (doesn\'t require any permission)')
     parser.add_argument('--github-orgs', help='Github orgs names (comma separated). Users will be searched also in the orgs.')
@@ -899,6 +945,7 @@ def main():
     parser.add_argument('--add-org-repos-forks', help="Check an org repo even if it's a fork", action='store_true', default=False)
     parser.add_argument('--add-user-repos-forks', help="Check an user repo even if it's a fork", action='store_true', default=False)
     parser.add_argument('--max-urls', help="Maximun number of URLs to check", type=int, default=10000)
+    parser.add_argument('--max-repos', help="Maximum number of repos to check from orgs/users", type=int, default=50)
     parser.add_argument('--not-gitleaks', help="Don't use gitleaks", action='store_true', default=False)
     parser.add_argument('--not-trufflehog', help="Don't use trufflehog", action='store_true', default=False)
     parser.add_argument('--not-rex', help="Don't use Rex", action='store_true', default=False)
@@ -907,6 +954,7 @@ def main():
     parser.add_argument('--not-kingfisher', help="Don't use kingfisher", action='store_true', default=False)
     parser.add_argument('--rex-regex-path', help="Path to regex file for Rex (auto download if nothign specified)")
     parser.add_argument('--tools-timeout', default=300, help="Timeout in seconds whe launching the tools")
+    parser.add_argument('--max-timeout', type=int, help="Maximum total execution time in seconds (0 for unlimited)", default=0)
     parser.add_argument('--rex-all-regexes', help="Allow Rex to use all the regexes (more noise, but more potential findings)", action='store_true', default=False)
 
     args = parser.parse_args()
@@ -944,6 +992,7 @@ def main():
 
     add_org_repos_forks = args.add_org_repos_forks
     add_user_repos_forks = args.add_user_repos_forks
+    max_repos = args.max_repos
     
     # Trufflehog options
     from_trufflehog_only_verified = args.from_trufflehog_only_verified
@@ -997,6 +1046,7 @@ def main():
     max_secret_length = int(args.max_secret_length)
     MAX_SECRET_LENGTH = max_secret_length
     TIMEOUT = int(args.tools_timeout)
+    MAX_TIMEOUT = int(args.max_timeout)
 
 
     if not is_tool("gitleaks") and not not_gitleaks:
@@ -1062,7 +1112,7 @@ def main():
             github_repos = [r.replace("http://", "").replace("https://", "").replace("github.com/", "") for r in github_repos]
 
         if github_orgs or github_users_str or github_repos:
-            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher)
+            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, max_repos, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher)
         else:
             print("No github orgs or users to check", file=sys.stderr)
             return
