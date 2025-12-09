@@ -64,7 +64,7 @@ def get_repos_from_user(github_user, add_user_repos_forks):
     return user_repos
 
 
-def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
+def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug, repo_path=None):
     """Download github repo and search for leaks"""
 
     global ALL_LEAKS, TIMEOUT
@@ -74,10 +74,17 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
         print(f"Gitleaks checking for leaks in {github_repo.full_name}")
     
     folder_name = id_generator()
+    cleanup_needed = repo_path is None
+    
     try:
-        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
-        subprocess.run(["gitleaks", "detect", "-s", f"/tmp/{folder_name}", "--report-format", "json", "--report-path", f"/tmp/{folder_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
-        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        if repo_path is None:
+            subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+            repo_path = f"/tmp/{folder_name}"
+        
+        subprocess.run(["gitleaks", "detect", "-s", repo_path, "--report-format", "json", "--report-path", f"/tmp/{folder_name}.json"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        
+        if cleanup_needed:
+            subprocess.run(["rm", "-rf", repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
     except Exception as e:
         print(f"Gitleaks repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
         return
@@ -195,7 +202,7 @@ def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, rex_all_regexe
         print(e, file=sys.stderr)
 
 
-def get_noseyparker_repo_leaks(github_repo, github_token, avoid_sources, debug):
+def get_noseyparker_repo_leaks(github_repo, github_token, avoid_sources, debug, repo_path=None):
     """Use noseyparker to search for leaks in GitHub repo"""
 
     global ALL_LEAKS, TIMEOUT
@@ -205,11 +212,19 @@ def get_noseyparker_repo_leaks(github_repo, github_token, avoid_sources, debug):
         print(f"Noseyparker checking for leaks in {github_repo.full_name}")
     
     folder_name = id_generator()
+    cleanup_needed = repo_path is None
+    
     try:
-        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
-        subprocess.run(["noseyparker", "scan", "--datastore", f"/tmp/{folder_name}.np", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        if repo_path is None:
+            subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+            repo_path = f"/tmp/{folder_name}"
+        
+        subprocess.run(["noseyparker", "scan", "--datastore", f"/tmp/{folder_name}.np", repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
         result = subprocess.run(["noseyparker", "report", "--datastore", f"/tmp/{folder_name}.np", "--format", "json"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
-        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}", f"/tmp/{folder_name}.np"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}.np"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        
+        if cleanup_needed:
+            subprocess.run(["rm", "-rf", repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
     except Exception as e:
         print(f"Noseyparker repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
         return
@@ -258,7 +273,7 @@ def get_noseyparker_repo_leaks(github_repo, github_token, avoid_sources, debug):
         print(e, file=sys.stderr)
 
 
-def get_ggshield_repo_leaks(github_repo, github_token, avoid_sources, debug):
+def get_ggshield_repo_leaks(github_repo, github_token, avoid_sources, debug, repo_path=None):
     """Use ggshield to search for leaks in GitHub repo"""
 
     global ALL_LEAKS, TIMEOUT
@@ -268,10 +283,17 @@ def get_ggshield_repo_leaks(github_repo, github_token, avoid_sources, debug):
         print(f"GGShield checking for leaks in {github_repo.full_name}")
     
     folder_name = id_generator()
+    cleanup_needed = repo_path is None
+    
     try:
-        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
-        result = subprocess.run(["ggshield", "secret", "scan", "repo", f"/tmp/{folder_name}", "--recursive", "--json"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT, env={**os.environ, "GITGUARDIAN_API_KEY": ""})
-        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        if repo_path is None:
+            subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+            repo_path = f"/tmp/{folder_name}"
+        
+        result = subprocess.run(["ggshield", "secret", "scan", "repo", repo_path, "--recursive", "--json"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT, env={**os.environ, "GITGUARDIAN_API_KEY": ""})
+        
+        if cleanup_needed:
+            subprocess.run(["rm", "-rf", repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
     except Exception as e:
         print(f"GGShield repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
         return
@@ -328,7 +350,7 @@ def get_ggshield_repo_leaks(github_repo, github_token, avoid_sources, debug):
         print(f"GGShield parsing error: {e}", file=sys.stderr)
 
 
-def get_kingfisher_repo_leaks(github_repo, github_token, avoid_sources, debug):
+def get_kingfisher_repo_leaks(github_repo, github_token, avoid_sources, debug, repo_path=None):
     """Use kingfisher to search for leaks in GitHub repo"""
 
     global ALL_LEAKS, TIMEOUT
@@ -338,10 +360,17 @@ def get_kingfisher_repo_leaks(github_repo, github_token, avoid_sources, debug):
         print(f"Kingfisher checking for leaks in {github_repo.full_name}")
     
     folder_name = id_generator()
+    cleanup_needed = repo_path is None
+    
     try:
-        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
-        result = subprocess.run(["kingfisher", "scan", f"/tmp/{folder_name}", "--format", "jsonl", "--no-validate", "--git-history", "full"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
-        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        if repo_path is None:
+            subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+            repo_path = f"/tmp/{folder_name}"
+        
+        result = subprocess.run(["kingfisher", "scan", repo_path, "--format", "jsonl", "--no-validate", "--git-history", "full"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        
+        if cleanup_needed:
+            subprocess.run(["rm", "-rf", repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
     except Exception as e:
         print(f"Kingfisher repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
         return
@@ -480,6 +509,60 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
                         pass
             finally:
                 semaph.release()
+
+
+def scan_repo_with_all_tools(github_repo, github_token, avoid_sources, debug, from_trufflehog_only_verified, only_verified, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher):
+    """Clone repo once and scan with all enabled tools in parallel"""
+    
+    global TIMEOUT
+    
+    # Clone repo once for all tools that need it
+    folder_name = id_generator()
+    repo_path = f"/tmp/{folder_name}"
+    
+    try:
+        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+    except Exception as e:
+        print(f"Failed to clone repo {github_repo.full_name}: {e}", file=sys.stderr)
+        return
+    
+    # Run all tools in parallel using threads
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    futures = []
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        # Trufflehog doesn't need cloned repo (uses GitHub API)
+        if not not_trufflehog:
+            futures.append(executor.submit(get_trufflehog_repo_leaks, github_repo, github_token, avoid_sources, debug, from_trufflehog_only_verified))
+        
+        # Tools that use the cloned repo
+        if not only_verified and not not_gitleaks:
+            futures.append(executor.submit(get_gitleaks_repo_leaks, github_repo, github_token, avoid_sources, debug, repo_path))
+        
+        if not only_verified and not not_rex:
+            futures.append(executor.submit(get_rex_repo_leaks, github_repo, github_token, rex_regex_path, rex_all_regexes, avoid_sources, debug))
+        
+        if not only_verified and not not_noseyparker:
+            futures.append(executor.submit(get_noseyparker_repo_leaks, github_repo, github_token, avoid_sources, debug, repo_path))
+        
+        if not only_verified and not not_ggshield:
+            futures.append(executor.submit(get_ggshield_repo_leaks, github_repo, github_token, avoid_sources, debug, repo_path))
+        
+        if not only_verified and not not_kingfisher:
+            futures.append(executor.submit(get_kingfisher_repo_leaks, github_repo, github_token, avoid_sources, debug, repo_path))
+        
+        # Wait for all tools to complete
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Tool execution error for {github_repo.full_name}: {e}", file=sys.stderr)
+    
+    # Clean up cloned repo
+    try:
+        subprocess.run(["rm", "-rf", repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+    except Exception as e:
+        print(f"Failed to cleanup {repo_path}: {e}", file=sys.stderr)
     
 
 def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher):
@@ -528,25 +611,24 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
             user_repos = get_repos_from_user(user, add_user_repos_forks)
             github_repos += user_repos
     
+    # NEW: Scan each repo with all tools in parallel
     pool = ThreadPool(processes=threads)
-    
-    if not not_trufflehog:
-        pool.starmap(get_trufflehog_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug), repeat(from_trufflehog_only_verified)))
-    
-    if not only_verified and not not_gitleaks:
-        pool.starmap(get_gitleaks_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug)))
-    
-    if not only_verified and not not_rex:
-        pool.starmap(get_rex_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(rex_regex_path), repeat(rex_all_regexes), repeat(avoid_sources), repeat(debug)))
-    
-    if not only_verified and not not_noseyparker:
-        pool.starmap(get_noseyparker_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug)))
-    
-    if not only_verified and not not_ggshield:
-        pool.starmap(get_ggshield_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug)))
-    
-    if not only_verified and not not_kingfisher:
-        pool.starmap(get_kingfisher_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug)))
+    pool.starmap(scan_repo_with_all_tools, zip(
+        (repo for repo in github_repos),
+        repeat(github_token),
+        repeat(avoid_sources),
+        repeat(debug),
+        repeat(from_trufflehog_only_verified),
+        repeat(only_verified),
+        repeat(not_gitleaks),
+        repeat(not_trufflehog),
+        repeat(not_rex),
+        repeat(rex_regex_path),
+        repeat(rex_all_regexes),
+        repeat(not_noseyparker),
+        repeat(not_ggshield),
+        repeat(not_kingfisher)
+    ))
 
     pool.close()
 
