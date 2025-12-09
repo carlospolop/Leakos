@@ -51,7 +51,6 @@ def get_repos_users_from_org(org_name, git_client, add_org_repos_forks, debug):
                 print("[+] Repo: " + str(repo.full_name))
             org_repos.append(repo)
     
-    print("bye")
     return org_users, org_repos
 
 
@@ -70,9 +69,9 @@ def get_gitleaks_repo_leaks(github_repo, github_token, avoid_sources, debug):
 
     global ALL_LEAKS, TIMEOUT
 
+    start_time = time.time()
     if debug:
         print(f"Gitleaks checking for leaks in {github_repo.full_name}")
-        start_time = time.time()
     
     folder_name = id_generator()
     try:
@@ -137,9 +136,9 @@ def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, rex_all_regexe
 
     global ALL_LEAKS, TIMEOUT
 
+    start_time = time.time()
     if debug:
         print(f"Rex checking for leaks in {github_repo.full_name}")
-        start_time = time.time()
     
     try:
         if rex_all_regexes:
@@ -196,13 +195,224 @@ def get_rex_repo_leaks(github_repo, github_token, rex_regex_path, rex_all_regexe
         print(e, file=sys.stderr)
 
 
+def get_noseyparker_repo_leaks(github_repo, github_token, avoid_sources, debug):
+    """Use noseyparker to search for leaks in GitHub repo"""
+
+    global ALL_LEAKS, TIMEOUT
+
+    start_time = time.time()
+    if debug:
+        print(f"Noseyparker checking for leaks in {github_repo.full_name}")
+    
+    folder_name = id_generator()
+    try:
+        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        subprocess.run(["noseyparker", "scan", "--datastore", f"/tmp/{folder_name}.np", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        result = subprocess.run(["noseyparker", "report", "--datastore", f"/tmp/{folder_name}.np", "--format", "json"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}", f"/tmp/{folder_name}.np"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+    except Exception as e:
+        print(f"Noseyparker repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
+        return
+
+    if debug:
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"Noseyparker checked {github_repo.full_name} in {execution_time}s")
+
+    try:
+        results = json.loads(result.stdout.decode('utf-8'))
+        
+        already_known = set()
+        for finding in results:
+            for match in finding.get('matches', []):
+                secret = match['snippet']['matching']
+                if not secret in already_known:
+                    already_known.add(secret)
+
+                    if len(secret) > MAX_SECRET_LENGTH:
+                        continue
+
+                    url = f"https://github.com/{github_repo.full_name}"
+
+                    if any(res.lower() in finding['rule_name'].lower() for res in avoid_sources):
+                        print(f"Avoiding {finding['rule_name']}")
+                        continue
+                    
+                    print(f"[+] Noseyparker found: {secret} ({finding['rule_name']}) in {url}")
+                    
+                    semaph.acquire()
+                    try:
+                        if not secret in ALL_LEAKS:
+                            ALL_LEAKS[secret] = {
+                                "name": secret,
+                                "match": secret,
+                                "description": finding['rule_name'],
+                                "url": url,
+                                "verified": False,
+                                "tool": "noseyparker"
+                            }
+                    finally:
+                        semaph.release()
+    
+    except Exception as e:
+        print(e, file=sys.stderr)
+
+
+def get_ggshield_repo_leaks(github_repo, github_token, avoid_sources, debug):
+    """Use ggshield to search for leaks in GitHub repo"""
+
+    global ALL_LEAKS, TIMEOUT
+
+    start_time = time.time()
+    if debug:
+        print(f"GGShield checking for leaks in {github_repo.full_name}")
+    
+    folder_name = id_generator()
+    try:
+        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        result = subprocess.run(["ggshield", "secret", "scan", "repo", f"/tmp/{folder_name}", "--recursive", "--json"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT, env={**os.environ, "GITGUARDIAN_API_KEY": ""})
+        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+    except Exception as e:
+        print(f"GGShield repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
+        return
+
+    if debug:
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"GGShield checked {github_repo.full_name} in {execution_time}s")
+
+    try:
+        output = result.stdout.decode('utf-8')
+        if not output or output.strip() == "":
+            return
+            
+        results = json.loads(output)
+        
+        already_known = set()
+        # GGShield has a complex JSON structure, need to parse it
+        for scan_result in results.get('scans', []):
+            for entity in scan_result.get('entities_with_incidents', []):
+                for incident in entity.get('incidents', []):
+                    for occurrence in incident.get('occurrences', []):
+                        secret = occurrence.get('match', '')
+                        if not secret in already_known and secret:
+                            already_known.add(secret)
+
+                            if len(secret) > MAX_SECRET_LENGTH:
+                                continue
+
+                            url = f"https://github.com/{github_repo.full_name}"
+                            detector_name = incident.get('type', 'Unknown')
+
+                            if any(res.lower() in detector_name.lower() for res in avoid_sources):
+                                print(f"Avoiding {detector_name}")
+                                continue
+                            
+                            print(f"[+] GGShield found: {secret} ({detector_name}) in {url}")
+                            
+                            semaph.acquire()
+                            try:
+                                if not secret in ALL_LEAKS:
+                                    ALL_LEAKS[secret] = {
+                                        "name": secret,
+                                        "match": secret,
+                                        "description": detector_name,
+                                        "url": url,
+                                        "verified": False,
+                                        "tool": "ggshield"
+                                    }
+                            finally:
+                                semaph.release()
+    
+    except Exception as e:
+        print(f"GGShield parsing error: {e}", file=sys.stderr)
+
+
+def get_kingfisher_repo_leaks(github_repo, github_token, avoid_sources, debug):
+    """Use kingfisher to search for leaks in GitHub repo"""
+
+    global ALL_LEAKS, TIMEOUT
+
+    start_time = time.time()
+    if debug:
+        print(f"Kingfisher checking for leaks in {github_repo.full_name}")
+    
+    folder_name = id_generator()
+    try:
+        subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        result = subprocess.run(["kingfisher", "scan", f"/tmp/{folder_name}", "--format", "jsonl", "--no-validate", "--git-history", "full"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+        subprocess.run(["rm", "-rf", f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
+    except Exception as e:
+        print(f"Kingfisher repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
+        return
+
+    if debug:
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"Kingfisher checked {github_repo.full_name} in {execution_time}s")
+
+    try:
+        output = result.stdout.decode('utf-8')
+        if not output or output.strip() == "":
+            return
+            
+        already_known = set()
+        # Kingfisher JSONL: one finding per line, last line is summary
+        for line in output.strip().split('\n'):
+            if not line.startswith('{'):
+                continue
+            
+            try:
+                data = json.loads(line)
+                # Skip the summary line (doesn't have 'rule' key)
+                if 'rule' not in data:
+                    continue
+                    
+                secret = data.get('finding', {}).get('snippet', '')
+                if not secret or secret in already_known:
+                    continue
+                    
+                already_known.add(secret)
+
+                if len(secret) > MAX_SECRET_LENGTH:
+                    continue
+
+                url = f"https://github.com/{github_repo.full_name}"
+                rule_name = data.get('rule', {}).get('name', 'Unknown')
+
+                if any(res.lower() in rule_name.lower() for res in avoid_sources):
+                    print(f"Avoiding {rule_name}")
+                    continue
+                
+                print(f"[+] Kingfisher found: {secret} ({rule_name}) in {url}")
+                
+                semaph.acquire()
+                try:
+                    if not secret in ALL_LEAKS:
+                        ALL_LEAKS[secret] = {
+                            "name": secret,
+                            "match": secret,
+                            "description": rule_name,
+                            "url": url,
+                            "verified": data.get('finding', {}).get('validation', {}).get('status', '') == 'Valid',
+                            "tool": "kingfisher"
+                        }
+                finally:
+                    semaph.release()
+            except json.JSONDecodeError:
+                continue
+    
+    except Exception as e:
+        print(f"Kingfisher parsing error: {e}", file=sys.stderr)
+
+
 def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, from_trufflehog_only_verified):
 
     global ALL_LEAKS, TIMEOUT
 
+    start_time = time.time()
     if debug:
         print(f"Trufflehog checking for leaks in {github_repo.full_name}")
-        start_time = time.time()
     
     already_known = set()
 
@@ -262,22 +472,24 @@ def get_trufflehog_repo_leaks(github_repo, github_token, avoid_sources, debug, f
                             "name": line_json["Raw"],
                             "match": "",
                             "description": line_json["DetectorName"],
-                            "url": f"{repo_url}/commit/{repo_url['Github']['Commit']}",
+                            "url": f"{repo_url}/commit/{line_json['SourceMetadata']['Data']['Github']['commit']}",
                             "verified": line_json["Verified"],
                             "tool": "trufflehog"
                         }
-                    except:
+                    except (KeyError, TypeError):
                         pass
             finally:
                 semaph.release()
     
 
-def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes):
+def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher):
     """Check github for leaks"""
 
     github_users = []
 
-    git_client = Github(github_token)
+    from github import Auth
+    auth = Auth.Token(github_token)
+    git_client = Github(auth=auth)
     
     # Get github repos objs
     if github_repos:
@@ -286,8 +498,10 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
             try:
                 github_repos_temp.append(git_client.get_repo(repo))
             except Exception as e:
-                print(f"Contiuing without checking repo {repo}: {e}", file=sys.stderr)
-            github_repos = github_repos_temp
+                print(f"Continuing without checking repo {repo}: {e}", file=sys.stderr)
+        github_repos = github_repos_temp
+    else:
+        github_repos = []
     
     # Get github users objs
     if github_users_str:
@@ -324,6 +538,15 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
     
     if not only_verified and not not_rex:
         pool.starmap(get_rex_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(rex_regex_path), repeat(rex_all_regexes), repeat(avoid_sources), repeat(debug)))
+    
+    if not only_verified and not not_noseyparker:
+        pool.starmap(get_noseyparker_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug)))
+    
+    if not only_verified and not not_ggshield:
+        pool.starmap(get_ggshield_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug)))
+    
+    if not only_verified and not not_kingfisher:
+        pool.starmap(get_kingfisher_repo_leaks, zip((repo for repo in github_repos), repeat(github_token), repeat(avoid_sources), repeat(debug)))
 
     pool.close()
 
@@ -335,6 +558,7 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
 def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_web, no_exts, from_trufflehog_only_verified, only_verified, max_urls, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes):
     """Check web for leaks"""
 
+    urls = []
     # Read file
     if urls_file:
         with open(urls_file, "r") as f:
@@ -369,7 +593,7 @@ def get_trufflehog_web_leaks(dirpath, url, avoid_sources, from_trufflehog_only_v
                 result = subprocess.run(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT)
             else:
                 result = subprocess.run(["trufflehog", "filesystem", "--directory", f"{dirpath}", "--json", "--only-verified"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             print(f"repo: {dirpath} , error: {e}", file=sys.stderr)
             return
 
@@ -596,6 +820,9 @@ def main():
     parser.add_argument('--not-gitleaks', help="Don't use gitleaks", action='store_true', default=False)
     parser.add_argument('--not-trufflehog', help="Don't use trufflehog", action='store_true', default=False)
     parser.add_argument('--not-rex', help="Don't use Rex", action='store_true', default=False)
+    parser.add_argument('--not-noseyparker', help="Don't use noseyparker", action='store_true', default=False)
+    parser.add_argument('--not-ggshield', help="Don't use ggshield", action='store_true', default=False)
+    parser.add_argument('--not-kingfisher', help="Don't use kingfisher", action='store_true', default=False)
     parser.add_argument('--rex-regex-path', help="Path to regex file for Rex (auto download if nothign specified)")
     parser.add_argument('--tools-timeout', default=300, help="Timeout in seconds whe launching the tools")
     parser.add_argument('--rex-all-regexes', help="Allow Rex to use all the regexes (more noise, but more potential findings)", action='store_true', default=False)
@@ -606,8 +833,11 @@ def main():
     not_gitleaks = args.not_gitleaks
     not_trufflehog = args.not_trufflehog
     not_rex = args.not_rex
+    not_noseyparker = args.not_noseyparker
+    not_ggshield = args.not_ggshield
+    not_kingfisher = args.not_kingfisher
 
-    if not_gitleaks and not_trufflehog and not_rex:
+    if not_gitleaks and not_trufflehog and not_rex and not_noseyparker and not_ggshield and not_kingfisher:
         print("No tool to use...", file=sys.stderr)
         return
     
@@ -698,6 +928,18 @@ def main():
     if not is_tool("Rex") and not not_rex:
         print("Rex not found (https://github.com/JaimePolop/RExpository). Please install it in PATH", file=sys.stderr)
         exit(1)
+    
+    if not is_tool("noseyparker") and not not_noseyparker:
+        print("noseyparker not found (https://github.com/praetorian-inc/noseyparker). Please install it in PATH", file=sys.stderr)
+        exit(1)
+    
+    if not is_tool("ggshield") and not not_ggshield:
+        print("ggshield not found (https://github.com/GitGuardian/ggshield). Please install it in PATH", file=sys.stderr)
+        exit(1)
+    
+    if not is_tool("kingfisher") and not not_kingfisher:
+        print("kingfisher not found (https://github.com/mongodb/kingfisher). Please install it in PATH", file=sys.stderr)
+        exit(1)
 
     if not github_orgs and not github_users_str and not github_orgs_file and not github_users_file and not github_repos and not github_repos_file and not urls_file and not stdin_urls:
         print("Nothing to do")
@@ -738,7 +980,7 @@ def main():
             github_repos = [r.replace("http://", "").replace("https://", "").replace("github.com/", "") for r in github_repos]
 
         if github_orgs or github_users_str or github_repos:
-            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes)
+            check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher)
         else:
             print("No github orgs or users to check", file=sys.stderr)
             return

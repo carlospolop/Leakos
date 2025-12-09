@@ -1,0 +1,21 @@
+# Dockerignore file for Leakos
+.git
+.github
+.gitignore
+*.md
+!README.md
+*.pyc
+__pycache__
+.pytest_cache
+.venv
+venv
+env
+*.egg-info
+dist
+build
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode
+.idea
