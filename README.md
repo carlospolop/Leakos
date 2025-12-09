@@ -1,6 +1,6 @@
 # Leakos
 
-![](leakos.jpeg)
+![](leakos.png)
 
 **Multi-tool secret scanner that searches for secrets in GitHub repositories and web responses using gitleaks, trufflehog, Rex, noseyparker, ggshield, and kingfisher.**
 
