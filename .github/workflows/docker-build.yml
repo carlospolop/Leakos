@@ -101,10 +101,10 @@ jobs:
           # Test that leakos runs
           docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --help
           
-          # Verify tools are installed
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest sh -c "gitleaks version"
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest sh -c "trufflehog --version"
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest sh -c "Rex --version || echo 'Rex installed'"
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest sh -c "noseyparker --version"
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest sh -c "ggshield --version"
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest sh -c "kingfisher --version"
+          # Verify tools are installed (override entrypoint)
+          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest gitleaks version
+          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest trufflehog --version
+          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest sh -c "Rex -h 2>&1 | head -2 || echo 'Rex installed'"
+          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest noseyparker --version
+          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ggshield --version
+          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest kingfisher --version
