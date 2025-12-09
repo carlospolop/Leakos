@@ -1,6 +1,9 @@
 # Multi-stage Dockerfile for Leakos with all secret scanning tools
 FROM python:3.11-slim as builder
 
+# Optional GitHub token for API rate limits
+ARG GITHUB_TOKEN=""
+
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     git \
@@ -11,7 +14,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Go (needed for some tools) - fetch latest stable version
-RUN LATEST_GO=$(curl -sL 'https://go.dev/dl/?mode=json' | grep -oP '"version":"\K[^"]+' | head -1) && \
+RUN LATEST_GO=$(curl -sL 'https://go.dev/dl/?mode=json' | grep -o '"version":"go[^"]*"' | head -1 | cut -d'"' -f4) && \
+    echo "Installing Go version: $LATEST_GO" && \
     wget https://go.dev/dl/${LATEST_GO}.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf ${LATEST_GO}.linux-amd64.tar.gz && \
     rm ${LATEST_GO}.linux-amd64.tar.gz
@@ -28,7 +32,10 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /tmp
 
 # Install gitleaks - fetch latest release
-RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') && \
+RUN AUTH_HEADER=""; \
+    if [ -n "$GITHUB_TOKEN" ]; then AUTH_HEADER="Authorization: token $GITHUB_TOKEN"; fi && \
+    LATEST_VERSION=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//') && \
+    echo "Installing gitleaks version: $LATEST_VERSION" && \
     wget https://github.com/gitleaks/gitleaks/releases/download/v${LATEST_VERSION}/gitleaks_${LATEST_VERSION}_linux_x64.tar.gz && \
     tar -xzf gitleaks_${LATEST_VERSION}_linux_x64.tar.gz && \
     mv gitleaks /usr/local/bin/ && \
@@ -36,7 +43,10 @@ RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/rele
     rm -f gitleaks_${LATEST_VERSION}_linux_x64.tar.gz
 
 # Install trufflehog - fetch latest release
-RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') && \
+RUN AUTH_HEADER=""; \
+    if [ -n "$GITHUB_TOKEN" ]; then AUTH_HEADER="Authorization: token $GITHUB_TOKEN"; fi && \
+    LATEST_VERSION=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//') && \
+    echo "Installing trufflehog version: $LATEST_VERSION" && \
     wget https://github.com/trufflesecurity/trufflehog/releases/download/v${LATEST_VERSION}/trufflehog_${LATEST_VERSION}_linux_amd64.tar.gz && \
     tar -xzf trufflehog_${LATEST_VERSION}_linux_amd64.tar.gz && \
     mv trufflehog /usr/local/bin/ && \
@@ -44,11 +54,15 @@ RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/trufflesecurity/truffl
     rm -f trufflehog_${LATEST_VERSION}_linux_amd64.tar.gz
 
 # Install Rex - always get latest from Go
-RUN go install github.com/JaimePolop/RExpository@latest && \
+RUN echo "Installing Rex (latest from Go)" && \
+    go install github.com/JaimePolop/RExpository@latest && \
     cp /go/bin/RExpository /usr/local/bin/Rex
 
 # Install noseyparker - fetch latest release
-RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/praetorian-inc/noseyparker/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') && \
+RUN AUTH_HEADER=""; \
+    if [ -n "$GITHUB_TOKEN" ]; then AUTH_HEADER="Authorization: token $GITHUB_TOKEN"; fi && \
+    LATEST_VERSION=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/praetorian-inc/noseyparker/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//') && \
+    echo "Installing noseyparker version: $LATEST_VERSION" && \
     wget https://github.com/praetorian-inc/noseyparker/releases/download/v${LATEST_VERSION}/noseyparker-v${LATEST_VERSION}-x86_64-unknown-linux-musl.tar.gz && \
     tar -xzf noseyparker-v${LATEST_VERSION}-x86_64-unknown-linux-musl.tar.gz && \
     mv noseyparker-v${LATEST_VERSION}-x86_64-unknown-linux-musl/bin/noseyparker /usr/local/bin/ && \
@@ -56,7 +70,10 @@ RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/praetorian-inc/noseypa
     rm -rf noseyparker-v${LATEST_VERSION}-x86_64-unknown-linux-musl*
 
 # Install kingfisher - fetch latest release
-RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/mongodb/kingfisher/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') && \
+RUN AUTH_HEADER=""; \
+    if [ -n "$GITHUB_TOKEN" ]; then AUTH_HEADER="Authorization: token $GITHUB_TOKEN"; fi && \
+    LATEST_VERSION=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/mongodb/kingfisher/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/^v//') && \
+    echo "Installing kingfisher version: $LATEST_VERSION" && \
     wget https://github.com/mongodb/kingfisher/releases/download/v${LATEST_VERSION}/kingfisher-v${LATEST_VERSION}-x86_64-unknown-linux-musl.tar.gz && \
     tar -xzf kingfisher-v${LATEST_VERSION}-x86_64-unknown-linux-musl.tar.gz && \
     mv kingfisher-v${LATEST_VERSION}-x86_64-unknown-linux-musl/kingfisher /usr/local/bin/ && \
@@ -64,7 +81,8 @@ RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/mongodb/kingfisher/rel
     rm -rf kingfisher-v${LATEST_VERSION}-x86_64-unknown-linux-musl*
 
 # Install ggshield (Python tool) - always get latest
-RUN pip install --no-cache-dir ggshield
+RUN echo "Installing ggshield (latest from PyPI)" && \
+    pip install --no-cache-dir ggshield
 
 # Final stage
 FROM python:3.11-slim
