@@ -12,7 +12,7 @@ import requests
 
 from github import Github
 from itertools import repeat
-from multiprocessing.pool import ThreadPool
+from concurrent.futures import ThreadPoolExecutor
 from os.path import exists
 from threading import Semaphore
 
@@ -623,34 +623,31 @@ def check_github(github_token, github_users_str, github_orgs, github_repos, thre
         print(f"Limiting to {max_repos} repos out of {original_count} total repos found")
     
     # NEW: Scan each repo with all tools in parallel
-    pool = ThreadPool(processes=threads)
-    
-    # Process repos one by one, checking timeout between each
-    for repo in github_repos:
-        # Check if we've exceeded max timeout
-        if MAX_TIMEOUT > 0 and (time.time() - START_TIME) >= MAX_TIMEOUT:
-            print(f"[!] Maximum timeout of {MAX_TIMEOUT}s reached after scanning some repos. Stopping and returning results.", file=sys.stderr)
-            break
-        
-        # Scan this repo
-        pool.apply(scan_repo_with_all_tools, args=(
-            repo,
-            github_token,
-            avoid_sources,
-            debug,
-            from_trufflehog_only_verified,
-            only_verified,
-            not_gitleaks,
-            not_trufflehog,
-            not_rex,
-            rex_regex_path,
-            rex_all_regexes,
-            not_noseyparker,
-            not_ggshield,
-            not_kingfisher
-        ))
-
-    pool.close()
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        # Process repos one by one, checking timeout between each
+        for repo in github_repos:
+            # Check if we've exceeded max timeout
+            if MAX_TIMEOUT > 0 and (time.time() - START_TIME) >= MAX_TIMEOUT:
+                print(f"[!] Maximum timeout of {MAX_TIMEOUT}s reached after scanning some repos. Stopping and returning results.", file=sys.stderr)
+                break
+            
+            # Scan this repo
+            executor.submit(scan_repo_with_all_tools,
+                repo,
+                github_token,
+                avoid_sources,
+                debug,
+                from_trufflehog_only_verified,
+                only_verified,
+                not_gitleaks,
+                not_trufflehog,
+                not_rex,
+                rex_regex_path,
+                rex_all_regexes,
+                not_noseyparker,
+                not_ggshield,
+                not_kingfisher
+            ).result()
 
 
 #########################
@@ -677,32 +674,29 @@ def check_web(urls_file, stdin, threads, avoid_sources, debug, generic_leak_in_w
     if max_urls:
         urls = urls[:max_urls]
     
-    pool = ThreadPool(processes=threads)
-    
-    # Process URLs one by one, checking timeout between each
-    for url in urls:
-        # Check if we've exceeded max timeout
-        if MAX_TIMEOUT > 0 and (time.time() - START_TIME) >= MAX_TIMEOUT:
-            print(f"[!] Maximum timeout of {MAX_TIMEOUT}s reached after scanning some URLs. Stopping and returning results.", file=sys.stderr)
-            break
-        
-        # Scan this URL
-        pool.apply(get_web_leaks, args=(
-            url,
-            avoid_sources,
-            debug,
-            generic_leak_in_web,
-            no_exts,
-            from_trufflehog_only_verified,
-            only_verified,
-            not_gitleaks,
-            not_trufflehog,
-            not_rex,
-            rex_regex_path,
-            rex_all_regexes
-        ))
-    
-    pool.close()
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        # Process URLs one by one, checking timeout between each
+        for url in urls:
+            # Check if we've exceeded max timeout
+            if MAX_TIMEOUT > 0 and (time.time() - START_TIME) >= MAX_TIMEOUT:
+                print(f"[!] Maximum timeout of {MAX_TIMEOUT}s reached after scanning some URLs. Stopping and returning results.", file=sys.stderr)
+                break
+            
+            # Scan this URL
+            executor.submit(get_web_leaks,
+                url,
+                avoid_sources,
+                debug,
+                generic_leak_in_web,
+                no_exts,
+                from_trufflehog_only_verified,
+                only_verified,
+                not_gitleaks,
+                not_trufflehog,
+                not_rex,
+                rex_regex_path,
+                rex_all_regexes
+            ).result()
 
 
 def get_trufflehog_web_leaks(dirpath, url, avoid_sources, from_trufflehog_only_verified):
