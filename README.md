@@ -40,9 +40,6 @@ Install all required tools and Python dependencies:
 ```bash
 pip3 install -r requirements.txt
 
-```bash
-pip3 install -r requirements.txt
-
 # Install scanning tools (choose your platform):
 
 # macOS (using Homebrew)
