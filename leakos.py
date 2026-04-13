@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import requests
+import base64 as _b64
 
 from github import Github
 from itertools import repeat
@@ -241,6 +242,19 @@ def get_noseyparker_repo_leaks(github_repo, github_token, avoid_sources, debug, 
         for finding in results:
             for match in finding.get('matches', []):
                 secret = match['snippet']['matching']
+                # Newer noseyparker versions redact snippet content by default;
+                # fall back to the base64-encoded capture groups which always hold
+                # the raw secret value.
+                if not secret or secret == '[REDACTED]':
+                    raw_groups = match.get('groups') or finding.get('groups') or []
+                    for g in raw_groups:
+                        try:
+                            decoded = _b64.b64decode(g).decode('utf-8', errors='replace')
+                            if decoded and decoded != '[REDACTED]':
+                                secret = decoded
+                                break
+                        except Exception:
+                            pass
                 if not secret in already_known:
                     already_known.add(secret)
 
