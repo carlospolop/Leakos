@@ -545,11 +545,17 @@ def scan_repo_with_all_tools(github_repo, github_token, avoid_sources, debug, fr
         print(f"Failed to clone repo {github_repo.full_name}: {e}", file=sys.stderr)
         return
     
-    # Run all tools in parallel using threads
+    # The embedding runtime can lower per-repository parallelism when scanning
+    # large histories inside a bounded-memory container.
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    try:
+        tool_workers = max(1, min(6, int(os.environ.get("LEAKOS_TOOL_WORKERS", "6"))))
+    except ValueError:
+        tool_workers = 6
     
     futures = []
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=tool_workers) as executor:
         # Trufflehog doesn't need cloned repo (uses GitHub API)
         if not not_trufflehog:
             futures.append(executor.submit(get_trufflehog_repo_leaks, github_repo, github_token, avoid_sources, debug, from_trufflehog_only_verified))
