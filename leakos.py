@@ -304,13 +304,18 @@ def get_ggshield_repo_leaks(github_repo, github_token, avoid_sources, debug, rep
             subprocess.run(["git", "clone", f'https://{github_token}@github.com/{github_repo.full_name}', f"/tmp/{folder_name}"], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
             repo_path = f"/tmp/{folder_name}"
         
-        result = subprocess.run(["ggshield", "secret", "scan", "repo", repo_path, "--recursive", "--json"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT, env={**os.environ, "GITGUARDIAN_API_KEY": ""})
+        result = subprocess.run(["ggshield", "secret", "scan", "repo", repo_path, "--json", "--show-secrets"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
         
         if cleanup_needed:
             subprocess.run(["rm", "-rf", repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
     except Exception as e:
         print(f"GGShield repo: {github_repo.full_name} , error: {e}", file=sys.stderr)
-        return
+        raise
+
+    # ggshield returns 1 when it found incidents; 2, 3, and 128 mean the scan
+    # failed. An empty stdout after a failure must not look like a clean scan.
+    if result.returncode not in (0, 1):
+        raise RuntimeError(f"GGShield scan failed with exit code {result.returncode}")
 
     if debug:
         end_time = time.time()
@@ -326,7 +331,7 @@ def get_ggshield_repo_leaks(github_repo, github_token, avoid_sources, debug, rep
         
         already_known = set()
         # GGShield has a complex JSON structure, need to parse it
-        for scan_result in results.get('scans', []):
+        for scan_result in [results, *results.get('scans', [])]:
             for entity in scan_result.get('entities_with_incidents', []):
                 for incident in entity.get('incidents', []):
                     for occurrence in incident.get('occurrences', []):
@@ -362,6 +367,7 @@ def get_ggshield_repo_leaks(github_repo, github_token, avoid_sources, debug, rep
     
     except Exception as e:
         print(f"GGShield parsing error: {e}", file=sys.stderr)
+        raise
 
 
 def get_kingfisher_repo_leaks(github_repo, github_token, avoid_sources, debug, repo_path=None):
@@ -555,6 +561,7 @@ def scan_repo_with_all_tools(github_repo, github_token, avoid_sources, debug, fr
         tool_workers = 6
     
     futures = []
+    tool_errors = []
     with ThreadPoolExecutor(max_workers=tool_workers) as executor:
         # Trufflehog doesn't need cloned repo (uses GitHub API)
         if not not_trufflehog:
@@ -582,12 +589,16 @@ def scan_repo_with_all_tools(github_repo, github_token, avoid_sources, debug, fr
                 future.result()
             except Exception as e:
                 print(f"Tool execution error for {github_repo.full_name}: {e}", file=sys.stderr)
+                tool_errors.append(e)
     
     # Clean up cloned repo
     try:
         subprocess.run(["rm", "-rf", repo_path], stdout=open(os.devnull, 'wb'), stderr=open(os.devnull, 'wb'), timeout=TIMEOUT)
     except Exception as e:
         print(f"Failed to cleanup {repo_path}: {e}", file=sys.stderr)
+
+    if tool_errors:
+        raise RuntimeError(f"{len(tool_errors)} scanner(s) failed for {github_repo.full_name}")
     
 
 def check_github(github_token, github_users_str, github_orgs, github_repos, threads, avoid_sources, debug, from_trufflehog_only_verified, only_verified, add_org_repos_forks, add_user_repos_forks, max_repos, not_gitleaks, not_trufflehog, not_rex, rex_regex_path, rex_all_regexes, not_noseyparker, not_ggshield, not_kingfisher):
@@ -1081,6 +1092,10 @@ def main():
     
     if not is_tool("ggshield") and not not_ggshield:
         print("ggshield not found (https://github.com/GitGuardian/ggshield). Please install it in PATH", file=sys.stderr)
+        exit(1)
+
+    if not only_verified and not not_ggshield and not os.environ.get("GITGUARDIAN_API_KEY"):
+        print("GGShield requires GITGUARDIAN_API_KEY", file=sys.stderr)
         exit(1)
     
     if not is_tool("kingfisher") and not not_kingfisher:
