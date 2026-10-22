@@ -2,9 +2,6 @@
 FROM python:3.11-slim AS builder
 ARG TARGETARCH
 
-# Optional GitHub token for API rate limits
-ARG GITHUB_TOKEN=""
-
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     git \
@@ -18,7 +15,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /tmp
 
 # Fetch all GitHub release versions in ONE step to minimize API calls
-RUN AUTH_HEADER=""; \
+RUN --mount=type=secret,id=github_token \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)"; \
+    AUTH_HEADER=""; \
     if [ -n "$GITHUB_TOKEN" ]; then AUTH_HEADER="Authorization: token $GITHUB_TOKEN"; fi && \
     echo "Fetching latest versions from GitHub..." && \
     GITLEAKS_VER=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/gitleaks/gitleaks/releases/latest | python3 -c "import sys, json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))") && \
