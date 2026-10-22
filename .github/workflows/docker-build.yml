@@ -22,6 +22,8 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -32,6 +34,9 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Set up ARM emulation
+        uses: docker/setup-qemu-action@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -52,6 +57,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -61,7 +67,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           build-args: |
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
@@ -87,6 +93,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Set up ARM emulation
+        uses: docker/setup-qemu-action@v3
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -95,16 +104,19 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull and test image
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          
-          # Test that leakos runs
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --help
-          
-          # Verify tools are installed (override entrypoint)
-          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest gitleaks version
-          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest trufflehog --version
-          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest sh -c "Rex -h 2>&1 | head -2 || echo 'Rex installed'"
-          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest noseyparker --version
-          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ggshield --version
-          docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest kingfisher --version
+          for platform in linux/amd64 linux/arm64; do
+            docker pull --platform "$platform" "$IMAGE_REF"
+            docker run --rm --platform "$platform" "$IMAGE_REF" --help
+            docker run --rm --platform "$platform" --entrypoint sh "$IMAGE_REF" -ec '
+              test -s /leakos/scanner-versions.txt
+              gitleaks version
+              trufflehog --version
+              Rex -h >/tmp/rex-help 2>&1 || test -s /tmp/rex-help
+              noseyparker --version
+              kingfisher --version
+              ggshield --version
+            '
+          done

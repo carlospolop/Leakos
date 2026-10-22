@@ -1,5 +1,6 @@
 # Multi-stage Dockerfile for Leakos with all secret scanning tools
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
+ARG TARGETARCH
 
 # Optional GitHub token for API rate limits
 ARG GITHUB_TOKEN=""
@@ -13,21 +14,6 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-    # Install Go (needed for some tools) - fetch latest stable version
-    RUN LATEST_GO=$(curl -sL 'https://go.dev/dl/?mode=json' | python3 -c "import sys, json; print(json.load(sys.stdin)[0]['version'])") && \
-    echo "Installing Go version: $LATEST_GO" && \
-    wget https://go.dev/dl/${LATEST_GO}.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf ${LATEST_GO}.linux-amd64.tar.gz && \
-    rm ${LATEST_GO}.linux-amd64.tar.gz
-    
-    ENV PATH="/usr/local/go/bin:${PATH}"
-    ENV GOPATH="/go"
-    ENV PATH="${GOPATH}/bin:${PATH}"
-
-# Install Rust (needed for noseyparker and kingfisher)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
 # Build and install tools
 WORKDIR /tmp
 
@@ -39,60 +25,58 @@ RUN AUTH_HEADER=""; \
     TRUFFLEHOG_VER=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest | python3 -c "import sys, json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))") && \
     NOSEYPARKER_VER=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/praetorian-inc/noseyparker/releases/latest | python3 -c "import sys, json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))") && \
     KINGFISHER_VER=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/mongodb/kingfisher/releases/latest | python3 -c "import sys, json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))") && \
+    REX_VER=$(curl -sL -H "$AUTH_HEADER" https://api.github.com/repos/JaimePolop/RExpository/releases/latest | python3 -c "import sys, json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))") && \
     echo "gitleaks: $GITLEAKS_VER" > /tmp/versions.txt && \
     echo "trufflehog: $TRUFFLEHOG_VER" >> /tmp/versions.txt && \
     echo "noseyparker: $NOSEYPARKER_VER" >> /tmp/versions.txt && \
     echo "kingfisher: $KINGFISHER_VER" >> /tmp/versions.txt && \
+    echo "Rex: $REX_VER" >> /tmp/versions.txt && \
     cat /tmp/versions.txt
 
 # Install gitleaks
 RUN GITLEAKS_VER=$(grep gitleaks /tmp/versions.txt | cut -d' ' -f2) && \
+    case "$TARGETARCH" in amd64) ASSET_ARCH=x64 ;; arm64) ASSET_ARCH=arm64 ;; *) exit 1 ;; esac && \
     echo "Installing gitleaks version: $GITLEAKS_VER" && \
-    wget https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER}_linux_x64.tar.gz && \
-    tar -xzf gitleaks_${GITLEAKS_VER}_linux_x64.tar.gz && \
+    wget https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER}_linux_${ASSET_ARCH}.tar.gz && \
+    tar -xzf gitleaks_${GITLEAKS_VER}_linux_${ASSET_ARCH}.tar.gz && \
     mv gitleaks /usr/local/bin/ && \
     chmod +x /usr/local/bin/gitleaks && \
-    rm -f gitleaks_${GITLEAKS_VER}_linux_x64.tar.gz
+    rm -f gitleaks_${GITLEAKS_VER}_linux_${ASSET_ARCH}.tar.gz
 
 # Install trufflehog
 RUN TRUFFLEHOG_VER=$(grep trufflehog /tmp/versions.txt | cut -d' ' -f2) && \
+    case "$TARGETARCH" in amd64) ASSET_ARCH=amd64 ;; arm64) ASSET_ARCH=arm64 ;; *) exit 1 ;; esac && \
     echo "Installing trufflehog version: $TRUFFLEHOG_VER" && \
-    wget https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VER}/trufflehog_${TRUFFLEHOG_VER}_linux_amd64.tar.gz && \
-    tar -xzf trufflehog_${TRUFFLEHOG_VER}_linux_amd64.tar.gz && \
+    wget https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VER}/trufflehog_${TRUFFLEHOG_VER}_linux_${ASSET_ARCH}.tar.gz && \
+    tar -xzf trufflehog_${TRUFFLEHOG_VER}_linux_${ASSET_ARCH}.tar.gz && \
     mv trufflehog /usr/local/bin/ && \
     chmod +x /usr/local/bin/trufflehog && \
-    rm -f trufflehog_${TRUFFLEHOG_VER}_linux_amd64.tar.gz
+    rm -f trufflehog_${TRUFFLEHOG_VER}_linux_${ASSET_ARCH}.tar.gz
 
-# Install Rex - clone and build from source
-RUN echo "Installing Rex (latest from GitHub)" && \
-    git clone --depth 1 https://github.com/JaimePolop/RExpository.git /tmp/RExpository && \
-    cd /tmp/RExpository/clients/go && \
-    go build -o Rex regexFinder.go && \
-    mv Rex /usr/local/bin/ && \
-    chmod +x /usr/local/bin/Rex && \
-    rm -rf /tmp/RExpository
+# Install the latest tagged Rex release for this CPU architecture.
+RUN REX_VER=$(grep '^Rex:' /tmp/versions.txt | cut -d' ' -f2) && \
+    wget -qO /usr/local/bin/Rex https://github.com/JaimePolop/RExpository/releases/download/v${REX_VER}/Rex-linux-${TARGETARCH} && \
+    chmod +x /usr/local/bin/Rex
 
 # Install noseyparker
 RUN NOSEYPARKER_VER=$(grep noseyparker /tmp/versions.txt | cut -d' ' -f2) && \
+    case "$TARGETARCH" in amd64) ASSET_ARCH=x86_64 ;; arm64) ASSET_ARCH=aarch64 ;; *) exit 1 ;; esac && \
     echo "Installing noseyparker version: $NOSEYPARKER_VER" && \
-    wget https://github.com/praetorian-inc/noseyparker/releases/download/v${NOSEYPARKER_VER}/noseyparker-v${NOSEYPARKER_VER}-x86_64-unknown-linux-musl.tar.gz && \
-    tar -xzf noseyparker-v${NOSEYPARKER_VER}-x86_64-unknown-linux-musl.tar.gz && \
+    wget https://github.com/praetorian-inc/noseyparker/releases/download/v${NOSEYPARKER_VER}/noseyparker-v${NOSEYPARKER_VER}-${ASSET_ARCH}-unknown-linux-musl.tar.gz && \
+    tar -xzf noseyparker-v${NOSEYPARKER_VER}-${ASSET_ARCH}-unknown-linux-musl.tar.gz && \
     mv bin/noseyparker /usr/local/bin/ && \
     chmod +x /usr/local/bin/noseyparker && \
-    rm -rf noseyparker-v${NOSEYPARKER_VER}-x86_64-unknown-linux-musl.tar.gz bin share LICENSE
+    rm -rf noseyparker-v${NOSEYPARKER_VER}-${ASSET_ARCH}-unknown-linux-musl.tar.gz bin share LICENSE
 
 # Install kingfisher
 RUN KINGFISHER_VER=$(grep kingfisher /tmp/versions.txt | cut -d' ' -f2) && \
+    case "$TARGETARCH" in amd64) ASSET_ARCH=x64 ;; arm64) ASSET_ARCH=arm64 ;; *) exit 1 ;; esac && \
     echo "Installing kingfisher version: $KINGFISHER_VER" && \
-    wget https://github.com/mongodb/kingfisher/releases/download/v${KINGFISHER_VER}/kingfisher-linux-x64.tgz && \
-    tar -xzf kingfisher-linux-x64.tgz && \
+    wget https://github.com/mongodb/kingfisher/releases/download/v${KINGFISHER_VER}/kingfisher-linux-${ASSET_ARCH}.tgz && \
+    tar -xzf kingfisher-linux-${ASSET_ARCH}.tgz && \
     mv kingfisher /usr/local/bin/ && \
     chmod +x /usr/local/bin/kingfisher && \
-    rm -f kingfisher-linux-x64.tgz
-
-# Install ggshield (Python tool) - always get latest
-RUN echo "Installing ggshield (latest from PyPI)" && \
-    pip install --no-cache-dir ggshield
+    rm -f kingfisher-linux-${ASSET_ARCH}.tgz
 
 # Final stage
 FROM python:3.11-slim
@@ -109,8 +93,7 @@ COPY --from=builder /usr/local/bin/trufflehog /usr/local/bin/
 COPY --from=builder /usr/local/bin/Rex /usr/local/bin/
 COPY --from=builder /usr/local/bin/noseyparker /usr/local/bin/
 COPY --from=builder /usr/local/bin/kingfisher /usr/local/bin/
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin/ggshield /usr/local/bin/
+COPY --from=builder /tmp/versions.txt /leakos/scanner-versions.txt
 
 # Set up working directory
 WORKDIR /leakos
@@ -122,7 +105,8 @@ COPY README.md .
 COPY LICENSE .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt ggshield \
+    && ggshield --version
 
 # Create a non-root user
 RUN useradd -m -u 1000 leakos && \
